@@ -7,7 +7,7 @@
 typedef int Elem_t;
 #define ELEM_T_SPECF "%d"
 
-//const long long int DEFAULT_CAPACITY = 1;
+//--------------------------------------------------------------------------------------------
 
 //! @brief Holds values returned by funcs like stack_pop(), stack_push(), stack_ctor(), etc.
 //! @note If STACK_ERROR_VERIFY is returned, you can call stack_verify() on your own
@@ -36,8 +36,8 @@ enum StackVerifyResFlag
 struct Stack
 {
     Elem_t *data = NULL;
-    long long int size = -1;
-    long long int capacity = -1;
+    long int size = -1;
+    long int capacity = -1;
 
     Elem_t *poison_value_pnt = NULL; //if NULL, no poison value is used
 };

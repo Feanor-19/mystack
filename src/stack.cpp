@@ -153,15 +153,15 @@ inline void stack_dump_data__( Stack *stk )
 
     fprintf(stderr, "\t{\n");
 
-    for (size_t ind = 0; ind < stk->capacity; ind++)
+    for (long int ind = 0; ind < stk->capacity; ind++)
     {
         if ( stk->poison_value_pnt && stk->data[ind] == *(stk->poison_value_pnt) )
         {
-            fprintf(stderr, "\t\t[%u]\t = <POISON VALUE>", ind);
+            fprintf(stderr, "\t\t[%ld]\t = <POISON VALUE>", ind);
         }
         else
         {
-            fprintf(stderr, "\t\t[%u]\t = <" ELEM_T_SPECF ">", ind, stk->data[ind]);
+            fprintf(stderr, "\t\t[%ld]\t = <" ELEM_T_SPECF ">", ind, stk->data[ind]);
         }
 
         if (stk->size == ind) fprintf(stderr, " <--");
