@@ -11,23 +11,30 @@
     USED DEFINES:
     1) STACK_DO_DUMP
     2) STACK_USE_POISON
-    3) EXIT_ON_DUMP
-    4) DUMP_ON_INVALID_POP
+    3) STACK_EXIT_ON_DUMP
+    4) STACK_DUMP_ON_INVALID_POP
+    5) STACK_USE_PROTECTION_CANARY
 */
 
 //--------------------------------------------------------------------------------------------
 
+#ifdef STACK_USE_POISON
 typedef unsigned char poison_t;
 const poison_t POISON_VALUE = (poison_t) 0xBE;
+#endif
 
 typedef long int stacksize_t;
 #define STACKSIZE_T_SPECF "%ld"
 
+#ifdef STACK_USE_PROTECTION_CANARY
+typedef unsigned long long canary_t;
+const canary_t CANARY_LEFT_DEFAULT_VALUE  = 0xADED;
+const canary_t CANARY_RIGHT_DEFAULT_VALUE = 0xADED;
+#endif
+
 /*
     ------------------------------------TODO--------------------------------------
-    3) всё под условную компиляцию!! и под разную!! и не использовать NDEBUG!!
 
-    4) TODO разбросанные по коду
 */
 
 //! @brief Holds values returned by funcs like stack_pop(), stack_push(), stack_ctor(), etc.
@@ -49,14 +56,22 @@ enum StackErrorCode
 //! size == 0 and capacity == 0!
 enum StackVerifyResFlag
 {
-    STACK_VERIFY_NULL_PNT           = 1, //< Passed pointer to the stack is NULL.
-    STACK_VERIFY_DATA_PNT_WRONG     = 2, //< Pointer to data is NULL and either size != 0 or capacity != 0).
-    STACK_VERIFY_SIZE_INVALID       = 4, //< Size < 0 or size > capacity.
-    STACK_VERIFY_CAPACITY_INVALID   = 8, //< capacity < 0.
+    STACK_VERIFY_NULL_PNT           = 1,  //< Passed pointer to the stack is NULL.
+    STACK_VERIFY_DATA_PNT_WRONG     = 2,  //< Pointer to data is NULL and either size != 0 or capacity != 0).
+    STACK_VERIFY_SIZE_INVALID       = 4,  //< Size < 0 or size > capacity.
+    STACK_VERIFY_CAPACITY_INVALID   = 8,  //< capacity < 0.
+    #ifdef STACK_USE_PROTECTION_CANARY
+    STACK_VERIFY_CANARY_STRCUT_DMG  = 16, //< One or both canaries in struct are damaged.
+    STACK_VERIFY_CANARY_DATA_DMG    = 32, //< One or both canaries in data are damaged.
+    #endif
 };
 
 struct Stack
 {
+    #ifdef STACK_USE_PROTECTION_CANARY
+    canary_t canary_left = CANARY_LEFT_DEFAULT_VALUE;
+    #endif
+
     Elem_t *data = NULL;
     stacksize_t size = -1;
     stacksize_t capacity = -1;
@@ -65,12 +80,32 @@ struct Stack
     const char *orig_file_name = NULL;
     int orig_line = -1;
     const char *orig_func_name = NULL;
+
+    #ifdef STACK_USE_PROTECTION_CANARY
+    canary_t canary_right = CANARY_RIGHT_DEFAULT_VALUE;
+    #endif
 };
+
+//---------------------------------------------------------------------------------------------------
 
 //! @brief Checks stack's condition.
 //! @param [in] stk Stack to check.
 //! @return Mask composed from StackVerifyResFlag enum values, equaling 0 if the stack is fine.
 static int stack_verify(const Stack *stk);
+
+#ifdef STACK_USE_PROTECTION_CANARY
+//! @brief Check's stack's canary struct protection state.
+//! @param [in] stk Stack to check.
+//! @return 1 if one of struct canaries is damaged, 0 otherwise.
+static int stack_is_dmgd_canary_struct_(const Stack *stk);
+
+//! @brief Check's stack's canary data protection state.
+//! @param [in] stk Stack to check.
+//! @return 1 if one of data canaries is damaged, 0 otherwise.
+static int stack_is_dmgd_canary_data_(const Stack *stk);
+#endif
+
+//---------------------------------------------------------------------------------------------------
 
 //! @brief Stack constructor. ONLY FOR INTERNAL USE! USE MACRO stack_ctor()!
 //! @details It doesn't allocate memory, setting size and capacity equalling 0. But
@@ -127,16 +162,50 @@ int stack_verify(const Stack *stk)
 {
     int error = 0;
 
-    if ( !stk )                                                         error |= STACK_VERIFY_NULL_PNT;
+    if ( !stk )
+    error |= STACK_VERIFY_NULL_PNT;
 
-    if ( stk && !(stk->data) && (stk->size != 0 || stk->capacity != 0)) error |= STACK_VERIFY_DATA_PNT_WRONG;
+    if ( stk && !(stk->data) && (stk->size != 0 || stk->capacity != 0))
+    error |= STACK_VERIFY_DATA_PNT_WRONG;
 
-    if ( stk && (stk->size < 0 || stk->size > (stk->capacity) ) )       error |= STACK_VERIFY_SIZE_INVALID;
+    if ( stk && (stk->size < 0 || stk->size > (stk->capacity) ) )
+    error |= STACK_VERIFY_SIZE_INVALID;
 
-    if ( stk && stk->capacity < 0)                                      error |= STACK_VERIFY_CAPACITY_INVALID;
+    if ( stk && stk->capacity < 0)
+    error |= STACK_VERIFY_CAPACITY_INVALID;
+
+    #ifdef STACK_USE_PROTECTION_CANARY
+    if ( stack_is_dmgd_canary_struct_ )
+    error |= STACK_VERIFY_CANARY_STRCUT_DMG;
+
+    if ( stack_is_dmgd_canary_data_ )
+    error |= STACK_VERIFY_CANARY_DATA_DMG;
+    #endif
 
     return error;
 }
+
+#ifdef STACK_USE_PROTECTION_CANARY
+
+int stack_is_dmgd_canary_struct_(const Stack *stk)
+{
+    assert(stk);
+
+    if (stk->canary_left != CANARY_LEFT_DEFAULT_VALUE
+     || stk->canary_right != CANARY_RIGHT_DEFAULT_VALUE) return 1;
+    return 0;
+}
+
+int stack_is_dmgd_canary_data_(const Stack *stk)
+{
+    assert(stk);
+    printf("TODO stack_is_dmgd_canary_data_!");
+    return 0;
+}
+
+#endif
+
+//---------------------------------------------------------------------------------------------------------------
 
 #define stack_ctor(stk) stack_ctor_(stk, #stk, __FILE__, __LINE__, __func__)
 
@@ -220,7 +289,7 @@ StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
 
     if (stk->size == 0)
     {
-        #ifdef DUMP_ON_INVALID_POP
+        #ifdef STACK_DUMP_ON_INVALID_POP
         STACK_DUMP(stk, 0);
         #endif
         return STACK_ERROR_NOTHING_TO_POP;
@@ -400,7 +469,7 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line)
 
     fprintf(stderr, "}\n");
 
-    #ifdef EXIT_ON_DUMP
+    #ifdef STACK_EXIT_ON_DUMP
     exit(verify_res);
     #endif
 }

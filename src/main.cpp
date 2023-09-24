@@ -5,8 +5,9 @@ typedef int Elem_t;
 
 #define STACK_DO_DUMP
 #define STACK_USE_POISON
-#define EXIT_ON_DUMP
-#define DUMP_ON_INVALID_POP
+#define STACK_EXIT_ON_DUMP
+#define STACK_DUMP_ON_INVALID_POP
+#define STACK_USE_PROTECTION_CANARY
 
 #include "stack.h"
 
