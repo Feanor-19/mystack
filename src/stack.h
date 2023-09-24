@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <memory.h>
 #include <stdio.h>
+#include <time.h>
 
 //ВРЕМЕННО, по хорошему это должно быть перед include stack.h
 //typedef int Elem_t;
@@ -14,6 +15,7 @@
     USED DEFINES:
     1) STACK_DO_DUMP
     2) STACK_USE_POISON
+    3) EXIT_ON_DUMP
 */
 
 //--------------------------------------------------------------------------------------------
@@ -26,15 +28,9 @@ typedef long int stacksize_t;
 
 /*
     ------------------------------------TODO--------------------------------------
-    2) poison value должен быть hex константой внутри .h (размера char?), снаружи не задается, а в data
-    записывается с помощью копирования этого char замощением по всему элементу, который нужно залить
-
     3) всё под условную компиляцию!! и под разную!! и не использовать NDEBUG!!
 
     4) TODO разбросанные по коду
-
-    5) в stack_dump считаем, что всё что >= size && < capacity является poison, а рядом печатаем
-    что там на самом деле
 */
 
 //! @brief Holds values returned by funcs like stack_pop(), stack_push(), stack_ctor(), etc.
@@ -118,9 +114,9 @@ static StackErrorCode stack_realloc(Stack *stk);
 
 #else  //STACK_DO_DUMP is turned on
 
-#define STACK_DUMP(stk, verify_res) stack_dump_( (stk), verify_res, __FILE__, __LINE__, #stk)
+#define STACK_DUMP(stk, verify_res) stack_dump_( (stk), verify_res, __FILE__, __LINE__)
 
-static void stack_dump_(Stack *stk, int verify_res, const char *file, int line, const char *stack_name);
+static void stack_dump_(Stack *stk, int verify_res, const char *file, int line);
 
 #endif //STACK_DO_DUMP
 
@@ -350,13 +346,34 @@ inline void stack_dump_data_( Stack *stk )
     fprintf(stderr, "\t}\n");
 }
 
-void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, const char *stack_name)
+inline void print_curr_local_time(FILE *stream)
+{
+    time_t curr_time = time(NULL);
+    tm curr_local_time = *localtime(&curr_time);
+
+
+    fprintf(stream, "%d-%02d-%02d %02d:%02d:%02d",    curr_local_time.tm_year + 1900,
+                                                        curr_local_time.tm_mon + 1,
+                                                        curr_local_time.tm_mday,
+                                                        curr_local_time.tm_hour,
+                                                        curr_local_time.tm_min,
+                                                        curr_local_time.tm_sec);
+}
+
+void stack_dump_(Stack *stk, int verify_res, const char *file, const int line)
 {
     //TODO печать в log файл, а не в stderr
-    fprintf(stderr, "STACK DUMP LOG\n"); // TODO добавить временнУю метку?
+    fprintf(stderr, "STACK DUMP at ");
+    print_curr_local_time(stderr);
+    fprintf(stderr, "\n");
 
-    fprintf(stderr, "Stack[%p] \"%s\" from ... "
-                    "called from %s, on line %d.\n", stk, stack_name, file, line);
+    fprintf(stderr, "Stack[%p] \"%s\" declared in %s(%d), in function %s. "
+                    "STACK_DUMP() called from %s, on line %d.\n",    stk,
+                                                        stk->stack_name,
+                                                        stk->orig_file_name,
+                                                        stk->orig_line,
+                                                        stk->orig_func_name,
+                                                        file, line);
 
     stack_dump_verify_res_(verify_res);
 
@@ -380,6 +397,10 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, c
     stack_dump_data_(stk);
 
     fprintf(stderr, "}\n");
+
+    #ifdef EXIT_ON_DUMP
+    exit(verify_res);
+    #endif
 }
 
 #endif // STACK_DO_DUMP
