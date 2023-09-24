@@ -7,18 +7,25 @@
 #include <stdio.h>
 
 //ВРЕМЕННО, по хорошему это должно быть перед include stack.h
-typedef int Elem_t;
-#define ELEM_T_SPECF "%d"
+//typedef int Elem_t;
+//#define ELEM_T_SPECF "%d"
+
+/*
+    USED DEFINES:
+    1) STACK_DO_DUMP
+    2) STACK_USE_POISON
+*/
 
 //--------------------------------------------------------------------------------------------
 
-const unsigned char POISON_VALUE = (unsigned char) 0xAA;
+typedef unsigned char poison_t;
+const poison_t POISON_VALUE = (poison_t) 0xBE;
+
+typedef long int stacksize_t;
+#define STACKSIZE_T_SPECF "%ld"
 
 /*
     ------------------------------------TODO--------------------------------------
-    1) все функции должны быть перенесены в .h, например с помощью include .cpp в конце .h
-    а также объявлены static (возможно только делкарация, возможно и реализация, возможно всё)
-
     2) poison value должен быть hex константой внутри .h (размера char?), снаружи не задается, а в data
     записывается с помощью копирования этого char замощением по всему элементу, который нужно залить
 
@@ -40,6 +47,7 @@ enum StackErrorCode
     STACK_ERROR_VERIFY              = 2, //< stack_verify() returned non-zero value.
     STACK_ERROR_NULL_RET_VALUE_PNT  = 3, //< NULL passed as a pointer to the return value.
     STACK_ERROR_MEM_BAD_REALLOC     = 4, //< Stack reallocation failed.
+    STACK_ERROR_NOTHING_TO_POP      = 5, //< Stack is empty, but pop() was called.
 };
 
 //! @brief Mask consisting of values of this enum is returned by stack_verify().
@@ -57,8 +65,8 @@ enum StackVerifyResFlag
 struct Stack
 {
     Elem_t *data = NULL;
-    long int size = -1;
-    long int capacity = -1;
+    stacksize_t size = -1;
+    stacksize_t capacity = -1;
 
     const char *stack_name = NULL;
     const char *orig_file_name = NULL;
@@ -176,14 +184,15 @@ StackErrorCode stack_dtor(Stack *stk)
     return STACK_ERROR_NO_ERROR;
 }
 
+#define STACK_CHECK(stk)    int verify_res = stack_verify(stk);     \
+                            if ( verify_res != 0 ) {                \
+                                STACK_DUMP(stk, verify_res);        \
+                                return STACK_ERROR_VERIFY;          \
+                            }
+
 StackErrorCode stack_push(Stack *stk, Elem_t value)
 {
-    // ВЫНЕСТИ В ДЕФАЙН!!!
-    int verify_res = stack_verify(stk);
-    if ( verify_res != 0 ) {
-        STACK_DUMP(stk, verify_res);
-        return STACK_ERROR_VERIFY;
-    }
+    STACK_CHECK(stk)
 
     StackErrorCode mem_realloc_res = stack_realloc(stk); // сам stack_realloc определяет, нужно ли делать realloc
     if ( mem_realloc_res )
@@ -196,23 +205,46 @@ StackErrorCode stack_push(Stack *stk, Elem_t value)
     return STACK_ERROR_NO_ERROR;
 }
 
+#ifdef STACK_USE_POISON
+inline void fill_with_poison(Stack *stk, stacksize_t ind)
+{
+    assert(stk);
+    assert(0 <= ind && ind < stk->capacity);
+
+    poison_t *ptr = (poison_t *) (stk->data + ind);
+    for (size_t i = 0; i < sizeof(Elem_t)/sizeof(poison_t); i++)
+    {
+        *ptr = POISON_VALUE;
+        ptr += 1;
+    }
+}
+#endif
+
 StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
 {
-    int verify_res = stack_verify(stk);
-    if ( verify_res != 0 ) {
-        STACK_DUMP(stk, verify_res);
-        return STACK_ERROR_VERIFY;
-    }
+    STACK_CHECK(stk)
     if ( !ret_value ) return STACK_ERROR_NULL_RET_VALUE_PNT;
+
+    if (stk->size == 0) return STACK_ERROR_NOTHING_TO_POP;
 
     *ret_value = stk->data[--(stk->size)];
 
-    //if ( stk->poison_value_pnt ) stk->data[stk->size] = *(stk->poison_value_pnt); !!!!!!!!!!!!!!!!!!!!!!!!!!
+    #ifdef STACK_USE_POISON
+    fill_with_poison(stk, stk->size);
+    #endif
 
     return STACK_ERROR_NO_ERROR;
 }
 
 //-------------------------------------------------------------------------------------------------------
+
+inline void fill_up_with_poison(Stack *stk, stacksize_t start_with_index)
+{
+    for (stacksize_t ind = start_with_index; ind < stk->capacity; ind++)
+    {
+        fill_with_poison(stk, ind);
+    }
+}
 
 //! @brief Doubles (if MEM_MULTIPLIER == 2) the capacity of the stack, allocates new memory,
 //! moves data to the new place, frees old memory. Supports case when data pointer
@@ -237,6 +269,10 @@ inline StackErrorCode stack_realloc_up__( Stack *stk, const int MEM_MULTIPLIER )
     stk->data = new_data;
     stk->capacity = MEM_MULTIPLIER * stk->capacity;
 
+    #ifdef STACK_USE_POISON
+    fill_up_with_poison(stk, stk->size);
+    #endif
+
     return STACK_ERROR_NO_ERROR;
 }
 
@@ -259,11 +295,7 @@ inline StackErrorCode stack_realloc_down__(Stack *stk, const int MEM_MULTIPLIER)
 
 StackErrorCode stack_realloc(Stack *stk)
 {
-    int verify_res = stack_verify(stk);
-    if ( verify_res != 0 ) {
-        STACK_DUMP(stk, verify_res);
-        return STACK_ERROR_VERIFY;
-    }
+    STACK_CHECK(stk)
 
     const int MEM_MULTIPLIER = 2;
 
@@ -299,16 +331,16 @@ inline void stack_dump_data_( Stack *stk )
 
     fprintf(stderr, "\t{\n");
 
-    for (long int ind = 0; ind < stk->capacity; ind++)
+    for (stacksize_t ind = 0; ind < stk->capacity; ind++)
     {
-        //if ( stk->poison_value_pnt && stk->data[ind] == *(stk->poison_value_pnt) )
-        //{
-        //    fprintf(stderr, "\t\t[%ld]\t = <POISON VALUE>", ind);
-        //}
-        //else
-        //{
-            fprintf(stderr, "\t\t[%ld]\t = <" ELEM_T_SPECF ">", ind, stk->data[ind]);
-        //}
+        fprintf(stderr, "\t\t[" STACKSIZE_T_SPECF "]\t = <" ELEM_T_SPECF ">", ind, stk->data[ind]);
+
+        #ifdef STACK_USE_POISON
+        if (ind >= stk->size)
+        {
+            fprintf(stderr, " (MAYBE POISON: %x)", stk->data[ind]);
+        }
+        #endif
 
         if (stk->size == ind) fprintf(stderr, " <--");
 
@@ -335,8 +367,8 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, c
     }
 
     fprintf(stderr,  "{\n"
-                        "\tsize = <%ld>\n"
-                        "\tcapacity = <%ld>\n"
+                        "\tsize = <" STACKSIZE_T_SPECF ">\n"
+                        "\tcapacity = <" STACKSIZE_T_SPECF ">\n"
                         "\tdata[%p]\n", stk->size, stk->capacity, stk->data );
 
     if ( !(stk->data) )

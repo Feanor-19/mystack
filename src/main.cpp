@@ -1,9 +1,10 @@
 #include <stdio.h>
 
-//typedef int Elem_t;
-//#define ELEM_T_SPECF "%d"
+typedef int Elem_t;
+#define ELEM_T_SPECF "%d"
 
 #define STACK_DO_DUMP
+#define STACK_USE_POISON
 
 #include "stack.h"
 
@@ -28,6 +29,16 @@ int main()
     int x;
     code = stack_pop(&stk, &x);
     printf("pop1 code = %d\n", code);
+    printf("popped: %d\n", x);
+    STACK_DUMP(&stk, 0);
+
+    code = stack_pop(&stk, &x);
+    printf("pop2 code = %d\n", code);
+    printf("popped: %d\n", x);
+    STACK_DUMP(&stk, 0);
+
+    code = stack_pop(&stk, &x);
+    printf("pop3 code = %d\n", code);
     printf("popped: %d\n", x);
     STACK_DUMP(&stk, 0);
 
