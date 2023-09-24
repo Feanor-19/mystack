@@ -7,15 +7,12 @@
 #include <stdio.h>
 #include <time.h>
 
-//ВРЕМЕННО, по хорошему это должно быть перед include stack.h
-//typedef int Elem_t;
-//#define ELEM_T_SPECF "%d"
-
 /*
     USED DEFINES:
     1) STACK_DO_DUMP
     2) STACK_USE_POISON
     3) EXIT_ON_DUMP
+    4) DUMP_ON_INVALID_POP
 */
 
 //--------------------------------------------------------------------------------------------
@@ -221,8 +218,13 @@ StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
     STACK_CHECK(stk)
     if ( !ret_value ) return STACK_ERROR_NULL_RET_VALUE_PNT;
 
-    if (stk->size == 0) return STACK_ERROR_NOTHING_TO_POP;
-
+    if (stk->size == 0)
+    {
+        #ifdef DUMP_ON_INVALID_POP
+        STACK_DUMP(stk, 0);
+        #endif
+        return STACK_ERROR_NOTHING_TO_POP;
+    }
     *ret_value = stk->data[--(stk->size)];
 
     #ifdef STACK_USE_POISON

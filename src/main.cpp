@@ -6,6 +6,7 @@ typedef int Elem_t;
 #define STACK_DO_DUMP
 #define STACK_USE_POISON
 #define EXIT_ON_DUMP
+#define DUMP_ON_INVALID_POP
 
 #include "stack.h"
 
@@ -19,9 +20,11 @@ int main()
 
     stack_push(&stk, 19);
 
-    stack_push(&stk, 23);
+    int x = 0;
+    stack_pop(&stk, &x);
+    stack_pop(&stk, &x);
 
-    STACK_DUMP(&stk, 0);
+    stack_push(&stk, 42);
 
     stack_dtor(&stk);
 
