@@ -4,10 +4,28 @@
 #include <stdlib.h>
 
 //ВРЕМЕННО, по хорошему это должно быть перед include stack.h
-typedef int Elem_t;
-#define ELEM_T_SPECF "%d"
+//typedef int Elem_t;
+//#define ELEM_T_SPECF "%d"
 
 //--------------------------------------------------------------------------------------------
+
+const unsigned char POISON_VALUE = (unsigned char) 0xAA;
+
+/*
+    ------------------------------------TODO--------------------------------------
+    1) все функции должны быть перенесены в .h, например с помощью include .cpp в конце .h
+    а также объявлены static (возможно только делкарация, возможно и реализация, возможно всё)
+
+    2) poison value должен быть hex константой внутри .h (размера char?), снаружи не задается, а в data
+    записывается с помощью копирования этого char замощением по всему элементу, который нужно залить
+
+    3) всё под условную компиляцию!! и под разную!! и не использовать NDEBUG!!
+
+    4) TODO разбросанные по коду
+
+    5) в stack_dump считаем, что всё что >= size && < capacity является poison, а рядом печатаем
+    что там на самом деле
+*/
 
 //! @brief Holds values returned by funcs like stack_pop(), stack_push(), stack_ctor(), etc.
 //! @note If STACK_ERROR_VERIFY is returned, you can call stack_verify() on your own
@@ -39,53 +57,64 @@ struct Stack
     long int size = -1;
     long int capacity = -1;
 
-    Elem_t *poison_value_pnt = NULL; //if NULL, no poison value is used
+    const char *stack_name = NULL;
+    const char *orig_file_name = NULL;
+    int orig_line = -1;
+    const char *orig_func_name = NULL;
 };
 
 //! @brief Checks stack's condition.
 //! @param [in] stk Stack to check.
 //! @return Mask composed from StackVerifyResFlag enum values, equaling 0 if the stack is fine.
-int stack_verify(const Stack *stk);
+static int stack_verify(const Stack *stk);
 
-//! @brief Stack constructor.
+//! @brief Stack constructor. ONLY FOR INTERNAL USE! USE MACRO stack_ctor()!
 //! @details It doesn't allocate memory, setting size and capacity equalling 0. But
 //! first push() will lead to realloc_up().
 //! @param [in] stk Pointer to stack to construct.
 //! @return StackErrorCode enum value.
-StackErrorCode stack_ctor(Stack *stk, Elem_t *poison_value_pnt = NULL);
+static StackErrorCode stack_ctor_(  Stack *stk,
+                                    const char *stack_name,
+                                    const char *orig_file_name,
+                                    const int orig_line,
+                                    const char *orig_func_name);
 
 //! @brief Stack deconstructor.
 //! @param [in] stk Pointer to stack to deconstruct.
 //! @return StackErrorCode enum value.
-StackErrorCode stack_dtor(Stack *stk);
+static StackErrorCode stack_dtor(Stack *stk);
 
 //! @brief Pushes element to stack.
 //! @param [in] stk Pointer to the stack.
 //! @param [in] value Value to push to the stack.
 //! @return StackErrorCode enum value.
-StackErrorCode stack_push(Stack *stk, Elem_t value);
+static StackErrorCode stack_push(Stack *stk, Elem_t value);
 
 //! @brief Pops element from stack.
 //! @param [in] stk Pointer to the stack.
 //! @param [in] ret_value Pointer to put popped value to.
 //! @return StackErrorCode enum value.
-StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value);
+static StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value);
 
 //! @brief Checks stack's state and, if needed, reallocs memory for the stack and changes stk->data.
 //! @param [in] stk Pointer to the stack.
 //! @return StackErrorCode enum value.
-StackErrorCode stack_realloc(Stack *stk);
+static StackErrorCode stack_realloc(Stack *stk);
 
-#ifdef NDEBUG
+#ifdef STACK_DO_DUMP
 
-#define STACK_DUMP(stk) (void(0)) // ВОЗМОЖНО СТОИТ ПОМЕНЯТЬ НА ЧТО-ТО ДРУГОЕ
+#define STACK_DUMP(stk, verify_res) (void(0))
 
-#else  //DEBUG is turned on
+#else  //STACK_DO_DUMP is turned on
 
-#define STACK_DUMP(stk, verify_res) stack_dump__( (stk), verify_res, __FILE__, __LINE__, #stk)
+#define STACK_DUMP(stk, verify_res) stack_dump_( (stk), verify_res, __FILE__, __LINE__, #stk)
 
-void stack_dump__(Stack *stk, int verify_res, const char *file, int line, const char *stack_name);
+static void stack_dump_(Stack *stk, int verify_res, const char *file, int line, const char *stack_name);
 
-#endif //NDEBUG
+#endif //STACK_DO_DUMP
 
-#endif
+//--------------------------------------------------------------------------------------
+
+#include "stack.cpp"
+
+#endif // STACK_H

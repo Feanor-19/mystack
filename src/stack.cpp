@@ -1,4 +1,7 @@
-#include "stack.h"
+#ifndef STACK_CPP
+#define STACK_CPP
+
+#include "stack.h" // не должно ничего делать, когда этот файл включается в stack.h ?
 
 #include <assert.h>
 #include <memory.h>
@@ -19,14 +22,24 @@ int stack_verify(const Stack *stk)
     return error;
 }
 
-StackErrorCode stack_ctor(Stack *stk, Elem_t *poison_value_pnt)
+#define stack_ctor(stk) stack_ctor_(stk, #stk, __FILE__, __LINE__, __func__)
+
+StackErrorCode stack_ctor_( Stack *stk,
+                            const char *stack_name,
+                            const char *orig_file_name,
+                            const int orig_line,
+                            const char *orig_func_name)
 {
     if (!stk) return STACK_ERROR_NULL_STK_PNT_PASSED;
 
     stk->data = NULL;
     stk->capacity = 0;
     stk->size = 0;
-    stk->poison_value_pnt = poison_value_pnt;
+
+    stk->stack_name = stack_name;
+    stk->orig_file_name = orig_file_name;
+    stk->orig_line = orig_line;
+    stk->orig_func_name = orig_func_name;
 
     return STACK_ERROR_NO_ERROR;
 }
@@ -37,14 +50,20 @@ StackErrorCode stack_dtor(Stack *stk)
 
     stk->capacity = -1;
     stk->size = -1;
-    stk->poison_value_pnt = NULL;
     if (stk->data) free(stk->data);
+    stk->data = NULL;
+
+    stk->stack_name = NULL;
+    stk->orig_file_name = NULL;
+    stk->orig_line = -1;
+    stk->orig_func_name = NULL;
 
     return STACK_ERROR_NO_ERROR;
 }
 
 StackErrorCode stack_push(Stack *stk, Elem_t value)
 {
+    // ВЫНЕСТИ В ДЕФАЙН!!!
     int verify_res = stack_verify(stk);
     if ( verify_res != 0 ) {
         STACK_DUMP(stk, verify_res);
@@ -52,7 +71,7 @@ StackErrorCode stack_push(Stack *stk, Elem_t value)
     }
 
     StackErrorCode mem_realloc_res = stack_realloc(stk); // сам stack_realloc определяет, нужно ли делать realloc
-    if ( !mem_realloc_res ) // так читаемее? так хуже потому что "нет ошибок" не всегда ноль?
+    if ( !mem_realloc_res )
     {
         return mem_realloc_res;
     }
@@ -74,7 +93,7 @@ StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
 
     *ret_value = stk->data[--(stk->size)];
 
-    if ( stk->poison_value_pnt ) stk->data[stk->size] = *(stk->poison_value_pnt);
+    //if ( stk->poison_value_pnt ) stk->data[stk->size] = *(stk->poison_value_pnt); !!!!!!!!!!!!!!!!!!!!!!!!!!
 
     return STACK_ERROR_NO_ERROR;
 }
@@ -142,27 +161,32 @@ StackErrorCode stack_realloc(Stack *stk)
 
 //-------------------------------------------------------------------------------------------------------
 
-inline void stack_dump_verify_res__( int verify_res )
+#define STACK_DO_DUMP //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1111
+
+#ifdef STACK_DO_DUMP
+
+inline void stack_dump_verify_res_( int verify_res )
 {
+    //-------------------------------------------TODO-----------------------------------------
     fprintf(stderr, "Stack verification result: TEMPORARY LIKE THIS <%d>", verify_res);
 }
 
-inline void stack_dump_data__( Stack *stk )
+inline void stack_dump_data_( Stack *stk )
 {
-    //const size_t N_FREE_SLOTS_TO_PRINT = 5;
+    //const size_t N_FREE_SLOTS_TO_PRINT = 5; //TODO
 
     fprintf(stderr, "\t{\n");
 
     for (long int ind = 0; ind < stk->capacity; ind++)
     {
-        if ( stk->poison_value_pnt && stk->data[ind] == *(stk->poison_value_pnt) )
-        {
-            fprintf(stderr, "\t\t[%ld]\t = <POISON VALUE>", ind);
-        }
-        else
-        {
+        //if ( stk->poison_value_pnt && stk->data[ind] == *(stk->poison_value_pnt) )
+        //{
+        //    fprintf(stderr, "\t\t[%ld]\t = <POISON VALUE>", ind);
+        //}
+        //else
+        //{
             fprintf(stderr, "\t\t[%ld]\t = <" ELEM_T_SPECF ">", ind, stk->data[ind]);
-        }
+        //}
 
         if (stk->size == ind) fprintf(stderr, " <--");
 
@@ -172,15 +196,15 @@ inline void stack_dump_data__( Stack *stk )
     fprintf(stderr, "\t}\n");
 }
 
-void stack_dump__(Stack *stk, int verify_res, const char *file, const int line, const char *stack_name)
+void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, const char *stack_name)
 {
     //TODO печать в log файл, а не в stderr
-    fprintf(stderr, "STACK DUMP LOG\n"); // TODO добавить временную метку?
+    fprintf(stderr, "STACK DUMP LOG\n"); // TODO добавить временнУю метку?
 
     fprintf(stderr, "Stack[%p] \"%s\" from ... "
                     "called from %s, on line %d.", stk, stack_name, file, line);
 
-    stack_dump_verify_res__(verify_res);
+    stack_dump_verify_res_(verify_res);
 
     if (!stk)
     {
@@ -199,7 +223,11 @@ void stack_dump__(Stack *stk, int verify_res, const char *file, const int line, 
         return;
     }
 
-    stack_dump_data__(stk);
+    stack_dump_data_(stk);
 
     fprintf(stderr, "}\n");
 }
+
+#endif // STACK_DO_DUMP
+
+#endif // STACK_CPP
