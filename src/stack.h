@@ -175,10 +175,10 @@ int stack_verify(const Stack *stk)
     error |= STACK_VERIFY_CAPACITY_INVALID;
 
     #ifdef STACK_USE_PROTECTION_CANARY
-    if ( stack_is_dmgd_canary_struct_ )
+    if ( stack_is_dmgd_canary_struct_(stk) )
     error |= STACK_VERIFY_CANARY_STRCUT_DMG;
 
-    if ( stack_is_dmgd_canary_data_ )
+    if ( stack_is_dmgd_canary_data_(stk) )
     error |= STACK_VERIFY_CANARY_DATA_DMG;
     #endif
 

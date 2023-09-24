@@ -15,7 +15,7 @@ int main()
 {
 
     Stack stk = {};
-    StackErrorCode code;
+    //StackErrorCode code;
 
     stack_ctor(&stk);
 
