@@ -7,7 +7,7 @@
 #include <memory.h>
 #include <stdio.h>
 
-int stack_verify(const Stack *stk)
+static int stack_verify(const Stack *stk)
 {
     int error = 0;
 
@@ -24,7 +24,7 @@ int stack_verify(const Stack *stk)
 
 #define stack_ctor(stk) stack_ctor_(stk, #stk, __FILE__, __LINE__, __func__)
 
-StackErrorCode stack_ctor_( Stack *stk,
+static StackErrorCode stack_ctor_( Stack *stk,
                             const char *stack_name,
                             const char *orig_file_name,
                             const int orig_line,
@@ -44,7 +44,7 @@ StackErrorCode stack_ctor_( Stack *stk,
     return STACK_ERROR_NO_ERROR;
 }
 
-StackErrorCode stack_dtor(Stack *stk)
+static StackErrorCode stack_dtor(Stack *stk)
 {
     if (!stk) return STACK_ERROR_NULL_STK_PNT_PASSED;
 
@@ -61,7 +61,7 @@ StackErrorCode stack_dtor(Stack *stk)
     return STACK_ERROR_NO_ERROR;
 }
 
-StackErrorCode stack_push(Stack *stk, Elem_t value)
+static StackErrorCode stack_push(Stack *stk, Elem_t value)
 {
     // ВЫНЕСТИ В ДЕФАЙН!!!
     int verify_res = stack_verify(stk);
@@ -82,7 +82,7 @@ StackErrorCode stack_push(Stack *stk, Elem_t value)
     return STACK_ERROR_NO_ERROR;
 }
 
-StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
+static StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
 {
     int verify_res = stack_verify(stk);
     if ( verify_res != 0 ) {
@@ -135,7 +135,7 @@ inline StackErrorCode stack_realloc_down__(Stack *stk, const int MEM_MULTIPLIER)
     return STACK_ERROR_NO_ERROR;
 }
 
-StackErrorCode stack_realloc(Stack *stk)
+static StackErrorCode stack_realloc(Stack *stk)
 {
     int verify_res = stack_verify(stk);
     if ( verify_res != 0 ) {
@@ -196,7 +196,7 @@ inline void stack_dump_data_( Stack *stk )
     fprintf(stderr, "\t}\n");
 }
 
-void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, const char *stack_name)
+static void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, const char *stack_name)
 {
     //TODO печать в log файл, а не в stderr
     fprintf(stderr, "STACK DUMP LOG\n"); // TODO добавить временнУю метку?
