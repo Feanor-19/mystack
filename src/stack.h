@@ -56,17 +56,43 @@ enum StackErrorCode
 //! @note size may equal capacity, but next push() will call realloc().
 //! @note Data pointer equalling NULL is considered fine only if
 //! size == 0 and capacity == 0!
+//! @note IF YOU CHANGE THIS ENUM, DON'T FORGET TO CHANGE print_verify_res()!!!
 enum StackVerifyResFlag
 {
     STACK_VERIFY_NULL_PNT           = 1,  //< Passed pointer to the stack is NULL.
-    STACK_VERIFY_DATA_PNT_WRONG     = 2,  //< Pointer to data is NULL and either size != 0 or capacity != 0).
+    STACK_VERIFY_DATA_PNT_WRONG     = 2,  //< Pointer to data is NULL and either size != 0 or capacity != 0.
     STACK_VERIFY_SIZE_INVALID       = 4,  //< Size < 0 or size > capacity.
-    STACK_VERIFY_CAPACITY_INVALID   = 8,  //< capacity < 0.
+    STACK_VERIFY_CAPACITY_INVALID   = 8,  //< Capacity < 0.
     #ifdef STACK_USE_PROTECTION_CANARY
     STACK_VERIFY_CANARY_STRCUT_DMG  = 16, //< One or both canaries in struct are damaged.
     STACK_VERIFY_CANARY_DATA_DMG    = 32, //< One or both canaries in data are damaged.
     #endif
 };
+//! @note MUST BE IN SYNC WITH StackVerifyResFlag enum above!!!
+const char *verification_messages[] =
+{
+     "1: Passed pointer to the stack is NULL.",
+     "2: Pointer to data is NULL and either size != 0 or capacity != 0.",
+     "4: Size < 0 or size > capacity.",
+     "8: Capacity < 0.",
+    #ifdef STACK_USE_PROTECTION_CANARY
+    "16: One or both canaries in struct are damaged.",
+    "32: One or both canaries in data are damaged.",
+    #endif
+};
+
+//! @brief Gets verification result and prints corresponding error message for every error.
+inline void print_verify_res(FILE *stream, int verify_res)
+{
+    fprintf(stream, "Stack verification result: <%d>\n", verify_res);
+    for (size_t ind = 0; ind < sizeof(verification_messages)/sizeof(verification_messages[0]); ind++)
+    {
+        if (verify_res & ( 1 << ind ))
+        {
+            printf("----> %s\n", verification_messages[ind]);
+        }
+    }
+}
 
 struct Stack
 {
@@ -388,12 +414,6 @@ StackErrorCode stack_realloc(Stack *stk)
 
 #ifdef STACK_DO_DUMP
 
-inline void stack_dump_verify_res_( int verify_res )
-{
-    //-------------------------------------------TODO-----------------------------------------
-    fprintf(stderr, "Stack verification result: TEMPORARY LIKE THIS <%d>\n", verify_res);
-}
-
 inline void stack_dump_data_( Stack *stk )
 {
     fprintf(stderr, "\t{\n");
@@ -438,6 +458,9 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line)
     print_curr_local_time(stderr);
     fprintf(stderr, "\n");
 
+    print_verify_res(stderr, verify_res);
+
+
     fprintf(stderr, "Stack[%p] \"%s\" declared in %s(%d), in function %s. "
                     "STACK_DUMP() called from %s, on line %d.\n",    stk,
                                                         stk->stack_name,
@@ -445,8 +468,6 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line)
                                                         stk->orig_line,
                                                         stk->orig_func_name,
                                                         file, line);
-
-    stack_dump_verify_res_(verify_res);
 
     if (!stk)
     {

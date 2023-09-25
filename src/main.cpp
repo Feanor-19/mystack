@@ -13,9 +13,7 @@ typedef int Elem_t;
 
 int main()
 {
-
     Stack stk = {};
-    //StackErrorCode code;
 
     stack_ctor(&stk);
 
@@ -23,7 +21,14 @@ int main()
 
     int x = 0;
     stack_pop(&stk, &x);
+
+    //left canary damaging example
+    //*((char *) &stk) = 'f';
+
     stack_pop(&stk, &x);
+
+    //right canary damaging example
+    //*(((char *) (&stk + 1)) - 1) = 'f';
 
     stack_push(&stk, 42);
 
