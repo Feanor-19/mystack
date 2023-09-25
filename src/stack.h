@@ -21,6 +21,7 @@
 #ifdef STACK_USE_POISON
 typedef unsigned char poison_t;
 const poison_t POISON_VALUE = (poison_t) 0xBE;
+#define POISON_T_SPECF "%X"
 #endif
 
 typedef long int stacksize_t;
@@ -28,6 +29,7 @@ typedef long int stacksize_t;
 
 #ifdef STACK_USE_PROTECTION_CANARY
 typedef unsigned long long canary_t;
+#define CANARY_T_SPECF "%I64X"
 const canary_t CANARY_LEFT_DEFAULT_VALUE  = 0xADED;
 const canary_t CANARY_RIGHT_DEFAULT_VALUE = 0xADED;
 #endif
@@ -394,8 +396,6 @@ inline void stack_dump_verify_res_( int verify_res )
 
 inline void stack_dump_data_( Stack *stk )
 {
-    //const size_t N_FREE_SLOTS_TO_PRINT = 5; //TODO
-
     fprintf(stderr, "\t{\n");
 
     for (stacksize_t ind = 0; ind < stk->capacity; ind++)
@@ -405,7 +405,7 @@ inline void stack_dump_data_( Stack *stk )
         #ifdef STACK_USE_POISON
         if (ind >= stk->size)
         {
-            fprintf(stderr, " (MAYBE POISON: %x)", stk->data[ind]);
+            fprintf(stderr, " (MAYBE POISON: <" POISON_T_SPECF ">)", stk->data[ind]);
         }
         #endif
 
@@ -455,9 +455,15 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line)
     }
 
     fprintf(stderr,  "{\n"
+                        "\tleft_canary = <" CANARY_T_SPECF ">\n"
                         "\tsize = <" STACKSIZE_T_SPECF ">\n"
                         "\tcapacity = <" STACKSIZE_T_SPECF ">\n"
-                        "\tdata[%p]\n", stk->size, stk->capacity, stk->data );
+                        "\tdata[%p]\n"
+                        "\tright_canary = <" CANARY_T_SPECF ">\n",  stk->canary_left,
+                                                                    stk->size,
+                                                                    stk->capacity,
+                                                                    stk->data,
+                                                                    stk->canary_right );
 
     if ( !(stk->data) )
     {
