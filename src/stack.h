@@ -30,8 +30,8 @@ typedef long int stacksize_t;
 #ifdef STACK_USE_PROTECTION_CANARY
 typedef unsigned long long canary_t;
 #define CANARY_T_SPECF "%I64X"
-const canary_t CANARY_LEFT_DEFAULT_VALUE  = 0xADED;
-const canary_t CANARY_RIGHT_DEFAULT_VALUE = 0xADED;
+const canary_t CANARY_LEFT_DEFAULT_VALUE  = 0xDEDEDED;
+const canary_t CANARY_RIGHT_DEFAULT_VALUE = 0xDEDEDED;
 #endif
 
 /*
@@ -508,9 +508,9 @@ inline void stack_dump_data_( Stack *stk )
 
     for (stacksize_t ind = 0; ind < stk->capacity; ind++)
     {
-        fprintf(stderr, "\t\t[" STACKSIZE_T_SPECF "][%p]\t = <" ELEM_T_SPECF ">",   ind,
-                                                                                    stk->data + ind,
-                                                                                    stk->data[ind]);
+        fprintf(stderr, "\t\t[" STACKSIZE_T_SPECF "][%p]\t = <", ind, stk->data + ind);
+        print_elem_t(stderr, stk->data[ind]);
+        fprintf(stderr, ">");
 
 #ifdef STACK_USE_POISON
         if (ind >= stk->size)

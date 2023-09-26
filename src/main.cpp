@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 typedef int Elem_t;
-#define ELEM_T_SPECF "%d"
+void inline print_elem_t(FILE *stream, Elem_t val) { fprintf(stream, "%d", val); }
 
 #define STACK_DO_DUMP
 #define STACK_USE_POISON
@@ -31,7 +31,10 @@ int main()
     //STACK_DUMP(&stk, 0);
 
     //left canary damaging example
-    //*((char *) &stk) = 'f';
+    *((char *) &stk) = 'f';
+
+    //right data canary damaging example
+    *((long long *)(stk.data + stk.capacity + 1)) = 0xAFAFAFA;
 
     stack_pop(&stk, &x);
 
