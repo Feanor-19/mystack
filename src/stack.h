@@ -387,14 +387,12 @@ inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p )
     new_data = (Elem_t *)(((char *) p_left_canary_end) + empty_space_between_left_canary_and_data);
 
     char *p_data_end = (char *)(new_data + stk->capacity);
-    size_t empty_space_between_data_and_right_canary = sizeof(canary_t) - ((__PTRDIFF_TYPE__)( p_data_end ) % sizeof(Elem_t));
+    size_t empty_space_between_data_and_right_canary = sizeof(canary_t) - ((__PTRDIFF_TYPE__)( p_data_end ) % sizeof(canary_t));
     if (empty_space_between_data_and_right_canary == sizeof(canary_t)) empty_space_between_data_and_right_canary = 0;
     stk->p_data_canary_right = (canary_t *)(((char *) p_data_end) + empty_space_between_data_and_right_canary);
-
-    *(stk->p_data_canary_left) = CANARY_LEFT_DEFAULT_VALUE;
-    *(stk->p_data_canary_right) = CANARY_RIGHT_DEFAULT_VALUE;
 /*
-    printf( "p_left_canary_end = %p\n"
+    printf( "~~~\n"
+            "p_left_canary_end = %p\n"
             "empty_space_between_left_canary_and_data = %d\n"
             "new_data = %p\n"
             "p_data_end = %p\n"
@@ -410,6 +408,12 @@ inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p )
                                                         *(stk->p_data_canary_left),
                                                         *(stk->p_data_canary_right) );
 */
+    assert( ((__PTRDIFF_TYPE__)new_data)%sizeof(Elem_t) == 0);
+    assert( ((__PTRDIFF_TYPE__) stk->p_data_canary_left )%sizeof(canary_t) == 0 );
+    assert( ((__PTRDIFF_TYPE__) stk->p_data_canary_right )%sizeof(canary_t) == 0 );
+
+    *(stk->p_data_canary_left) = CANARY_LEFT_DEFAULT_VALUE;
+    *(stk->p_data_canary_right) = CANARY_RIGHT_DEFAULT_VALUE;
 #endif
 
     *new_data_p = new_data;
@@ -515,7 +519,7 @@ inline void stack_dump_data_( Stack *stk )
 #ifdef STACK_USE_POISON
         if (ind >= stk->size)
         {
-            fprintf(stderr, " (MAYBE POISON: <" POISON_T_SPECF ">)", stk->data[ind]);
+            fprintf(stderr, " (MAYBE POISON: <" POISON_T_SPECF ">)", *((int *) stk->data + ind));
         }
 #endif
 
