@@ -11,7 +11,7 @@
     USED DEFINES:
     1) STACK_DO_DUMP
     2) STACK_USE_POISON
-    3) STACK_EXIT_ON_DUMP
+    3) STACK_ABORT_ON_DUMP
     4) STACK_DUMP_ON_INVALID_POP
     5) STACK_USE_PROTECTION_CANARY
 */
@@ -97,7 +97,7 @@ inline void print_verify_res(FILE *stream, int verify_res)
 struct Stack
 {
 #ifdef STACK_USE_PROTECTION_CANARY
-    canary_t canary_left = CANARY_LEFT_DEFAULT_VALUE;
+    canary_t canary_left = 0;
 #endif
 
     Elem_t *data = NULL;
@@ -109,12 +109,13 @@ struct Stack
     int orig_line = -1;
     const char *orig_func_name = NULL;
 
+    void *p_origin = NULL; // настоящий указатель на начало блока памяти, в котором лежит data
+
 #ifdef STACK_USE_PROTECTION_CANARY
     canary_t* p_data_canary_left = NULL;
     canary_t* p_data_canary_right = NULL;
-    void *p_origin = NULL;
 
-    canary_t canary_right = CANARY_RIGHT_DEFAULT_VALUE;
+    canary_t canary_right = 0;
 #endif
 };
 
@@ -178,9 +179,9 @@ static StackErrorCode stack_realloc(Stack *stk);
 
 #else  //STACK_DO_DUMP is turned on
 
-#define STACK_DUMP(stk, verify_res) stack_dump_( (stk), verify_res, __FILE__, __LINE__)
+#define STACK_DUMP(stk, verify_res) stack_dump_( (stk), verify_res, __FILE__, __LINE__, __func__)
 
-static void stack_dump_(Stack *stk, int verify_res, const char *file, int line);
+static void stack_dump_(Stack *stk, int verify_res, const char *file, int line, const char *func);
 
 #endif //STACK_DO_DUMP
 
@@ -207,10 +208,10 @@ int stack_verify(const Stack *stk)
     error |= STACK_VERIFY_CAPACITY_INVALID;
 
 #ifdef STACK_USE_PROTECTION_CANARY
-    if ( stack_is_dmgd_canary_struct_(stk) )
+    if ( stk && stack_is_dmgd_canary_struct_(stk) )
     error |= STACK_VERIFY_CANARY_STRCUT_DMG;
 
-    if ( stack_is_dmgd_canary_data_(stk) )
+    if ( stk && stk->data && stack_is_dmgd_canary_data_(stk) )
     error |= STACK_VERIFY_CANARY_DATA_DMG;
 #endif
 
@@ -231,7 +232,9 @@ int stack_is_dmgd_canary_struct_(const Stack *stk)
 int stack_is_dmgd_canary_data_(const Stack *stk)
 {
     assert(stk);
-    printf("TODO stack_is_dmgd_canary_data_!");
+
+    if (*(stk->p_data_canary_left) != CANARY_LEFT_DEFAULT_VALUE
+     || *(stk->p_data_canary_right) != CANARY_RIGHT_DEFAULT_VALUE) return 1;
     return 0;
 }
 
@@ -258,6 +261,10 @@ StackErrorCode stack_ctor_( Stack *stk,
     stk->orig_line = orig_line;
     stk->orig_func_name = orig_func_name;
 
+#ifdef STACK_USE_PROTECTION_CANARY
+    stk->canary_left = CANARY_LEFT_DEFAULT_VALUE;
+    stk->canary_right = CANARY_RIGHT_DEFAULT_VALUE;
+#endif
     return STACK_ERROR_NO_ERROR;
 }
 
@@ -274,15 +281,21 @@ StackErrorCode stack_dtor(Stack *stk)
     stk->orig_file_name = NULL;
     stk->orig_line = -1;
     stk->orig_func_name = NULL;
+#ifdef STACK_USE_PROTECTION_CANARY
+    stk->canary_left = 0;
+    stk->canary_right = 0;
 
+    stk->p_data_canary_left = NULL;
+    stk->p_data_canary_right = NULL;
+#endif
     return STACK_ERROR_NO_ERROR;
 }
 
-#define STACK_CHECK(stk)    int verify_res = stack_verify(stk);     \
+#define STACK_CHECK(stk)    {int verify_res = stack_verify(stk);     \
                             if ( verify_res != 0 ) {                \
                                 STACK_DUMP(stk, verify_res);        \
                                 return STACK_ERROR_VERIFY;          \
-                            }
+                            }}
 
 StackErrorCode stack_push(Stack *stk, Elem_t value)
 {
@@ -293,6 +306,8 @@ StackErrorCode stack_push(Stack *stk, Elem_t value)
     {
         return mem_realloc_res;
     }
+
+    STACK_CHECK(stk)
 
     (stk->data)[(stk->size)++] = value;
 
@@ -345,87 +360,89 @@ inline void fill_up_with_poison(Stack *stk, stacksize_t start_with_index)
     }
 }
 
-#ifdef STACK_USE_PROTECTION_CANARY //????????????????????????????????????????????????????????????????
-
-//! @brief Doubles (if MEM_MULTIPLIER == 2) the capacity of the stack, allocates new memory,
-//! moves data to the new place, frees old memory. Supports case when data pointer
-//! equals NULL and capacity == 0.
-inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
+inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p )
 {
-    if (stk->capacity == 0) stk->capacity = 1; //?????????????????????????????????????
+    assert(stk);
+    assert(new_data_p);
 
-    stk->capacity = MEM_MULTIPLIER * stk->capacity;
+    size_t calloc_first_arg = (size_t) stk->capacity;
+    size_t calloc_second_arg = sizeof(Elem_t);
+#ifdef STACK_USE_PROTECTION_CANARY
+    calloc_first_arg = 3 + (stk->capacity + 1)*sizeof(Elem_t) / sizeof(canary_t); // не проверено!!!!!!!!!!!!!!!!!
+    calloc_second_arg = sizeof(canary_t);
+#endif
 
-    // второй параметр sizeof(canary_t) чтобы выдаваемый p_calloc был адекватен для помещения по нему
-    // левой канарейки, то есть чтобы её адрес был кратен sizeof(canary_t)
-    // первый аргумент под вопросом
-    void *p_calloc = (void *) calloc(   3 + (stk->capacity + 1)*sizeof(Elem_t),
-                                        sizeof(canary_t) );
+    void *p_calloc = (void *) calloc( calloc_first_arg, calloc_second_arg );
     if (!p_calloc) return STACK_ERROR_MEM_BAD_REALLOC;
-
     stk->p_origin = p_calloc;
-    //stk->p_data_canary_left = ()
 
-    if (stk->data)
-    {
-        memcpy(new_data, stk->data, (size_t) stk->size);
-    }
+    Elem_t *new_data = (Elem_t *) p_calloc;
+#ifdef STACK_USE_PROTECTION_CANARY
+    stk->p_data_canary_left = (canary_t *) p_calloc;
 
-    if (stk->data)
-    {
-        free(stk->data);
-    }
+    char *p_left_canary_end = ((char *) p_calloc) + sizeof(canary_t);
 
-    stk->data = new_data;
+    size_t empty_space_between_left_canary_and_data = sizeof(Elem_t) - ((__PTRDIFF_TYPE__)( p_left_canary_end ) % sizeof(Elem_t));
+    if ( empty_space_between_left_canary_and_data == sizeof(Elem_t) ) empty_space_between_left_canary_and_data = 0;
+    new_data = (Elem_t *)(((char *) p_left_canary_end) + empty_space_between_left_canary_and_data);
 
-#ifdef STACK_USE_POISON
-    fill_up_with_poison(stk, stk->size);
+    char *p_data_end = (char *)(new_data + stk->capacity);
+    size_t empty_space_between_data_and_right_canary = sizeof(canary_t) - ((__PTRDIFF_TYPE__)( p_data_end ) % sizeof(Elem_t));
+    if (empty_space_between_data_and_right_canary == sizeof(canary_t)) empty_space_between_data_and_right_canary = 0;
+    stk->p_data_canary_right = (canary_t *)(((char *) p_data_end) + empty_space_between_data_and_right_canary);
+
+    *(stk->p_data_canary_left) = CANARY_LEFT_DEFAULT_VALUE;
+    *(stk->p_data_canary_right) = CANARY_RIGHT_DEFAULT_VALUE;
+/*
+    printf( "p_left_canary_end = %p\n"
+            "empty_space_between_left_canary_and_data = %d\n"
+            "new_data = %p\n"
+            "p_data_end = %p\n"
+            "empty_space_between_data_and_right_canary = %d\n"
+            "p_data_canary_right = %p\n"
+            "canary data left = " CANARY_T_SPECF "\n"
+            "canary data right = " CANARY_T_SPECF "\n", p_left_canary_end,
+                                                        empty_space_between_left_canary_and_data,
+                                                        new_data,
+                                                        p_data_end,
+                                                        empty_space_between_data_and_right_canary,
+                                                        stk->p_data_canary_right,
+                                                        *(stk->p_data_canary_left),
+                                                        *(stk->p_data_canary_right) );
+*/
 #endif
 
-    return STACK_ERROR_NO_ERROR;
-}
-
-//! @brief Divides by two (if MEM_MULTIPLIER == 2) the capacity of the stack,
-//! allocates new memory, moves data to the new place, frees old memory.
-inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
-{
-    Elem_t *new_data = (Elem_t *) calloc( (size_t) (stk->capacity) / MEM_MULTIPLIER, sizeof(Elem_t) );
-    if (!new_data) return STACK_ERROR_MEM_BAD_REALLOC;
-
-    if (stk->size > 0) memcpy(new_data, stk->data, (size_t) stk->size);
-
-    free(stk->data);
-
-    stk->data = new_data;
-    stk->capacity = (stk->capacity) / MEM_MULTIPLIER;
+    *new_data_p = new_data;
 
     return STACK_ERROR_NO_ERROR;
 }
-
-#else // if not use protection canary
 
 //! @brief Doubles (if MEM_MULTIPLIER == 2) the capacity of the stack, allocates new memory,
 //! moves data to the new place, frees old memory. Supports case when data pointer
 //! equals NULL and capacity == 0.
 inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
 {
-    if (stk->capacity == 0) stk->capacity = 1; //?????????????????????????????????????
+    if (stk->capacity == 0)
+    {
+        stk->capacity = 1;
+    }
+    stk->capacity = MEM_MULTIPLIER * stk->capacity;
 
-    Elem_t *new_data = (Elem_t *) calloc( (size_t) MEM_MULTIPLIER*((size_t) stk->capacity), sizeof(Elem_t) );
-    if (!new_data) return STACK_ERROR_MEM_BAD_REALLOC;
+    Elem_t *new_data = NULL;
+    if ( stack_realloc_helper_(stk, &new_data) ) return STACK_ERROR_MEM_BAD_REALLOC;
+    assert(new_data);
 
     if (stk->data)
     {
         memcpy(new_data, stk->data, (size_t) stk->size);
     }
-
-    if (stk->data)
+    if (stk->p_origin)
     {
-        free(stk->data);
+        free(stk->p_origin);
     }
-
     stk->data = new_data;
-    stk->capacity = MEM_MULTIPLIER * stk->capacity;
+
+    STACK_CHECK(stk)
 
 #ifdef STACK_USE_POISON
     fill_up_with_poison(stk, stk->size);
@@ -438,20 +455,20 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
 //! allocates new memory, moves data to the new place, frees old memory.
 inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
 {
-    Elem_t *new_data = (Elem_t *) calloc( (size_t) (stk->capacity) / MEM_MULTIPLIER, sizeof(Elem_t) );
-    if (!new_data) return STACK_ERROR_MEM_BAD_REALLOC;
+    stk->capacity = (stk->capacity) / MEM_MULTIPLIER;
+
+    Elem_t *new_data = NULL;
+    if ( stack_realloc_helper_(stk, &new_data) ) return STACK_ERROR_MEM_BAD_REALLOC;
+    assert(new_data);
 
     if (stk->size > 0) memcpy(new_data, stk->data, (size_t) stk->size);
 
-    free(stk->data);
+    free(stk->p_origin);
 
     stk->data = new_data;
-    stk->capacity = (stk->capacity) / MEM_MULTIPLIER;
 
     return STACK_ERROR_NO_ERROR;
 }
-
-#endif
 
 StackErrorCode stack_realloc(Stack *stk)
 {
@@ -481,9 +498,19 @@ inline void stack_dump_data_( Stack *stk )
 {
     fprintf(stderr, "\t{\n");
 
+#ifdef STACK_USE_PROTECTION_CANARY
+    if ( stk->p_data_canary_left )
+    {
+        fprintf(stderr, "\tLeft data canary[%p] = <" CANARY_T_SPECF ">\n",  stk->p_data_canary_left,
+                                                                            *(stk->p_data_canary_left));
+    }
+#endif
+
     for (stacksize_t ind = 0; ind < stk->capacity; ind++)
     {
-        fprintf(stderr, "\t\t[" STACKSIZE_T_SPECF "]\t = <" ELEM_T_SPECF ">", ind, stk->data[ind]);
+        fprintf(stderr, "\t\t[" STACKSIZE_T_SPECF "][%p]\t = <" ELEM_T_SPECF ">",   ind,
+                                                                                    stk->data + ind,
+                                                                                    stk->data[ind]);
 
 #ifdef STACK_USE_POISON
         if (ind >= stk->size)
@@ -496,6 +523,14 @@ inline void stack_dump_data_( Stack *stk )
 
         fprintf(stderr, "\n");
     }
+
+#ifdef STACK_USE_PROTECTION_CANARY
+    if ( stk->p_data_canary_right )
+    {
+        fprintf(stderr, "\tRight data canary[%p] = <" CANARY_T_SPECF ">\n", stk->p_data_canary_right,
+                                                                            *(stk->p_data_canary_right));
+    }
+#endif
 
     fprintf(stderr, "\t}\n");
 }
@@ -514,7 +549,7 @@ inline void print_curr_local_time(FILE *stream)
                                                         curr_local_time.tm_sec);
 }
 
-void stack_dump_(Stack *stk, int verify_res, const char *file, const int line)
+void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, const char *func)
 {
     //TODO печать в log файл, а не в stderr
     fprintf(stderr, "STACK DUMP at ");
@@ -525,12 +560,12 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line)
 
 
     fprintf(stderr, "Stack[%p] \"%s\" declared in %s(%d), in function %s. "
-                    "STACK_DUMP() called from %s, on line %d.\n",   stk,
+                    "STACK_DUMP() called from %s(%d), from function %s.\n",   stk,
                                                                     stk->stack_name,
                                                                     stk->orig_file_name,
                                                                     stk->orig_line,
                                                                     stk->orig_func_name,
-                                                                    file, line);
+                                                                    file, line, func);
 
     if (!stk)
     {
@@ -538,17 +573,16 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line)
         return;
     }
 
-    fprintf(stderr,  "{\n"
-                        "\tleft_canary = <" CANARY_T_SPECF ">\n"
-                        "\tsize = <" STACKSIZE_T_SPECF ">\n"
-                        "\tcapacity = <" STACKSIZE_T_SPECF ">\n"
-                        "\tdata[%p]\n"
-                        "\tright_canary = <" CANARY_T_SPECF ">\n",  stk->canary_left,
-                                                                    stk->size,
-                                                                    stk->capacity,
-                                                                    stk->data,
-                                                                    stk->canary_right );
-
+    fprintf(stderr, "{\n");
+#ifdef STACK_USE_PROTECTION_CANARY
+    fprintf(stderr, "\tleft_canary = <" CANARY_T_SPECF ">\n", stk->canary_left);
+#endif
+    fprintf(stderr, "\tsize = <" STACKSIZE_T_SPECF ">\n"
+                    "\tcapacity = <" STACKSIZE_T_SPECF ">\n"
+                    "\tdata[%p]\n", stk->size, stk->capacity, stk->data);
+#ifdef STACK_USE_PROTECTION_CANARY
+    fprintf(stderr, "\tright_canary = <" CANARY_T_SPECF ">\n", stk->canary_right);
+#endif
     if ( !(stk->data) )
     {
         fprintf(stderr, "Data pointer is NULL. Data cannot be accessed.\n");
@@ -559,8 +593,8 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line)
 
     fprintf(stderr, "}\n");
 
-#ifdef STACK_EXIT_ON_DUMP
-    exit(verify_res);
+#ifdef STACK_ABORT_ON_DUMP
+    abort();
 #endif
 }
 
