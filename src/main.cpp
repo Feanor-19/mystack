@@ -18,6 +18,7 @@ void inline print_elem_t(FILE *stream, Elem_t val) { fprintf(stream, "{i = %d, d
 #define STACK_ABORT_ON_DUMP
 #define STACK_DUMP_ON_INVALID_POP
 #define STACK_USE_PROTECTION_CANARY
+#define STACK_USE_PROTECTION_HASH
 
 #include "stack.h"
 

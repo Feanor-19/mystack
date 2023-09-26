@@ -14,6 +14,7 @@
     3) STACK_ABORT_ON_DUMP
     4) STACK_DUMP_ON_INVALID_POP
     5) STACK_USE_PROTECTION_CANARY
+    6) STACK_USE_PROTECTION_HASH
 */
 
 //--------------------------------------------------------------------------------------------
@@ -32,6 +33,12 @@ typedef unsigned long long canary_t;
 #define CANARY_T_SPECF "%I64X"
 const canary_t CANARY_LEFT_DEFAULT_VALUE  = 0xDEDEDED;
 const canary_t CANARY_RIGHT_DEFAULT_VALUE = 0xDEDEDED;
+#endif
+
+#ifdef STACK_USE_PROTECTION_HASH
+typedef long long stackhash_t;
+const stackhash_t HASH_DEFAULT_VALUE = 0;
+#define STACKHASH_T_SPECF "%I64X"
 #endif
 
 /*
@@ -59,26 +66,35 @@ enum StackErrorCode
 //! @note IF YOU CHANGE THIS ENUM, DON'T FORGET TO CHANGE print_verify_res()!!!
 enum StackVerifyResFlag
 {
-    STACK_VERIFY_NULL_PNT           = 1,  //< Passed pointer to the stack is NULL.
-    STACK_VERIFY_DATA_PNT_WRONG     = 2,  //< Pointer to data is NULL and either size != 0 or capacity != 0.
-    STACK_VERIFY_SIZE_INVALID       = 4,  //< Size < 0 or size > capacity.
-    STACK_VERIFY_CAPACITY_INVALID   = 8,  //< Capacity < 0.
+    STACK_VERIFY_NULL_PNT           = 1 << 0,  //< Passed pointer to the stack is NULL.
+    STACK_VERIFY_DATA_PNT_WRONG     = 1 << 1,  //< Pointer to data is NULL and either size != 0 or capacity != 0.
+    STACK_VERIFY_SIZE_INVALID       = 1 << 2,  //< Size < 0 or size > capacity.
+    STACK_VERIFY_CAPACITY_INVALID   = 1 << 3,  //< Capacity < 0.
 #ifdef STACK_USE_PROTECTION_CANARY
-    STACK_VERIFY_CANARY_STRCUT_DMG  = 16, //< One or both canaries in struct are damaged.
-    STACK_VERIFY_CANARY_DATA_DMG    = 32, //< One or both canaries in data are damaged.
+    STACK_VERIFY_CANARY_STRCUT_DMG  = 1 << 4, //< One or both canaries in struct are damaged.
+    STACK_VERIFY_CANARY_DATA_DMG    = 1 << 5, //< One or both canaries in data are damaged.
+#endif
+#ifdef STACK_USE_PROTECTION_HASH
+    STACK_VERIFY_STRUCT_HASH_INVALID= 1 << 6, //< Stack's struct hash is invalid.
+    STACK_VERIFY_DATA_HASH_INVALID  = 1 << 7, //< Stack's data hash is invalid.
 #endif
 };
 //! @note MUST BE IN SYNC WITH StackVerifyResFlag enum above!!!
 const char *verification_messages[] =
 {
-     "1: Passed pointer to the stack is NULL.",
-     "2: Pointer to data is NULL and either size != 0 or capacity != 0.",
-     "4: Size < 0 or size > capacity.",
-     "8: Capacity < 0.",
+      "1: Passed pointer to the stack is NULL.",
+      "2: Pointer to data is NULL and either size != 0 or capacity != 0.",
+      "4: Size < 0 or size > capacity.",
+      "8: Capacity < 0.",
 #ifdef STACK_USE_PROTECTION_CANARY
-    "16: One or both canaries in struct are damaged.",
-    "32: One or both canaries in data are damaged.",
+     "16: One or both canaries in struct are damaged.",
+     "32: One or both canaries in data are damaged.",
 #endif
+#ifdef STACK_USE_PROTECTION_HASH
+     "64: Stack's struct hash is invalid."
+    "128: Stack's data hash is invalid."
+#endif
+
 };
 
 //! @brief Gets verification result and prints corresponding error message for every error.
@@ -104,6 +120,11 @@ struct Stack
     stacksize_t size = -1;
     stacksize_t capacity = -1;
 
+#ifdef STACK_USE_PROTECTION_HASH
+    stackhash_t hash_struct = HASH_DEFAULT_VALUE;
+    stackhash_t hash_data = HASH_DEFAULT_VALUE;
+#endif
+
     const char *stack_name = NULL;
     const char *orig_file_name = NULL;
     int orig_line = -1;
@@ -124,7 +145,7 @@ struct Stack
 //! @brief Checks stack's condition.
 //! @param [in] stk Stack to check.
 //! @return Mask composed from StackVerifyResFlag enum values, equaling 0 if the stack is fine.
-static int stack_verify(const Stack *stk);
+static int stack_verify(Stack *stk);
 
 #ifdef STACK_USE_PROTECTION_CANARY
 //! @brief Check's stack's canary struct protection state.
@@ -136,6 +157,20 @@ static int stack_is_dmgd_canary_struct_(const Stack *stk);
 //! @param [in] stk Stack to check.
 //! @return 1 if one of data canaries is damaged, 0 otherwise.
 static int stack_is_dmgd_canary_data_(const Stack *stk);
+#endif
+
+#ifdef STACK_USE_PROTECTION_HASH
+//! @brief Computes hash of the stack and returns it.
+static stackhash_t stack_compute_hash(char * key, unsigned int len);
+
+//! @brief Check's stack's data hash. Returns 1 if hash is valid, 0 otherwise.
+static int stack_is_hash_data_valid(Stack *stk);
+
+//! @brief Check's stack's struct hash. Returns 1 if hash is valid, 0 otherwise.
+static int stack_is_hash_struct_valid(Stack *stk);
+
+//! @brief Recomputes stack's hash and writes the new one in the stack.
+static void stack_update_hash(Stack *stk);
 #endif
 
 //---------------------------------------------------------------------------------------------------
@@ -159,7 +194,7 @@ static StackErrorCode stack_dtor(Stack *stk);
 //! @brief Pushes element to stack.
 //! @param [in] stk Pointer to the stack.
 //! @param [in] value Value to push to the stack.
-//! @return StackErrorCode enum value.
+//! @return StackErrorCode enu m value.
 static StackErrorCode stack_push(Stack *stk, Elem_t value);
 
 //! @brief Pops element from stack.
@@ -191,7 +226,13 @@ static void stack_dump_(Stack *stk, int verify_res, const char *file, int line, 
 //--------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------
 
-int stack_verify(const Stack *stk)
+#define STACK_CHECK(stk)    {int verify_res = stack_verify(stk);     \
+                            if ( verify_res != 0 ) {                \
+                                STACK_DUMP(stk, verify_res);        \
+                                return STACK_ERROR_VERIFY;          \
+                            }}
+
+int stack_verify(Stack *stk)
 {
     int error = 0;
 
@@ -213,6 +254,14 @@ int stack_verify(const Stack *stk)
 
     if ( stk && stk->data && stack_is_dmgd_canary_data_(stk) )
     error |= STACK_VERIFY_CANARY_DATA_DMG;
+#endif
+
+#ifdef STACK_USE_PROTECTION_HASH
+    if (stk && stk->data && !stack_is_hash_struct_valid(stk))
+    error |= STACK_VERIFY_STRUCT_HASH_INVALID;
+
+    if (stk && stk->data && !stack_is_hash_data_valid(stk))
+    error |= STACK_VERIFY_DATA_HASH_INVALID;
 #endif
 
     return error;
@@ -240,6 +289,109 @@ int stack_is_dmgd_canary_data_(const Stack *stk)
 
 #endif
 
+#ifdef STACK_USE_PROTECTION_HASH
+static stackhash_t stack_compute_hash(char *key, unsigned int len)
+{
+    const unsigned int m = 0x5bd1e995;
+    const unsigned int seed = 0;
+    const int r = 24;
+
+    unsigned int hash = seed ^ len;
+
+    const unsigned char *data = (const unsigned char *) key;
+    unsigned int k = 0;
+
+    while (len >= 4)
+    {
+        k  = data[0];
+        k |= data[1] << 8;
+        k |= data[2] << 16;
+        k |= data[3] << 24;
+
+        k *= m;
+        k ^= k >> r;
+        k *= m;
+
+        hash *= m;
+        hash ^= k;
+
+        data += 4;
+        len -= 4;
+    }
+
+    switch (len)
+    {
+        case 3:
+        hash ^= data[2] << 16;
+        case 2:
+        hash ^= data[1] << 8;
+        case 1:
+        hash ^= data[0];
+        hash *= m;
+        default:
+        break;
+    };
+
+    hash ^= hash >> 13;
+    hash *= m;
+    hash ^= hash >> 15;
+
+    return hash;
+}
+
+inline stackhash_t stack_compute_hash_data_(Stack *stk)
+{
+    assert(stk);
+
+    return stack_compute_hash( (char *) stk->data, (stk->capacity)*sizeof(Elem_t));
+}
+
+inline stackhash_t stack_compute_hash_struct_(Stack *stk)
+{
+    assert(stk);
+
+    return stack_compute_hash( (char *) stk, sizeof(*stk) );
+}
+
+static int stack_is_hash_data_valid(Stack *stk)
+{
+    assert(stk);
+
+    if ( stk->hash_data == stack_compute_hash_data_(stk)) return 1;
+    return 0;
+}
+
+static int stack_is_hash_struct_valid(Stack *stk)
+{
+    assert(stk);
+
+    stackhash_t curr_hash = stk->hash_struct;
+    stk->hash_struct = HASH_DEFAULT_VALUE;
+    stackhash_t actual_hash = stack_compute_hash_struct_(stk);
+    stk->hash_struct = curr_hash;
+    if (curr_hash == actual_hash) return 1;
+    return 0;
+}
+
+static void stack_update_hash(Stack *stk)
+{
+    assert(stk);
+
+    if (stk->data)
+    {
+        stk->hash_data = stack_compute_hash_data_(stk);
+    }
+    else
+    {
+        stk->hash_data = HASH_DEFAULT_VALUE;
+    }
+
+    stk->hash_struct = HASH_DEFAULT_VALUE;
+    stk->hash_struct = stack_compute_hash_struct_(stk);
+}
+#endif
+
+
 //---------------------------------------------------------------------------------------------------------------
 
 #define stack_ctor(stk) stack_ctor_(stk, #stk, __FILE__, __LINE__, __func__)
@@ -265,6 +417,10 @@ StackErrorCode stack_ctor_( Stack *stk,
     stk->canary_left = CANARY_LEFT_DEFAULT_VALUE;
     stk->canary_right = CANARY_RIGHT_DEFAULT_VALUE;
 #endif
+
+#ifdef STACK_USE_PROTECTION_HASH
+    stack_update_hash(stk);
+#endif
     return STACK_ERROR_NO_ERROR;
 }
 
@@ -288,14 +444,13 @@ StackErrorCode stack_dtor(Stack *stk)
     stk->p_data_canary_left = NULL;
     stk->p_data_canary_right = NULL;
 #endif
+
+#ifdef STACK_USE_PROTECTION_HASH
+    stk->hash_struct = HASH_DEFAULT_VALUE;
+    stk->hash_data = HASH_DEFAULT_VALUE;
+#endif
     return STACK_ERROR_NO_ERROR;
 }
-
-#define STACK_CHECK(stk)    {int verify_res = stack_verify(stk);     \
-                            if ( verify_res != 0 ) {                \
-                                STACK_DUMP(stk, verify_res);        \
-                                return STACK_ERROR_VERIFY;          \
-                            }}
 
 StackErrorCode stack_push(Stack *stk, Elem_t value)
 {
@@ -307,9 +462,17 @@ StackErrorCode stack_push(Stack *stk, Elem_t value)
         return mem_realloc_res;
     }
 
+#ifdef STACK_USE_PROTECTION_HASH
+    stack_update_hash(stk);
+#endif
+
     STACK_CHECK(stk)
 
     (stk->data)[(stk->size)++] = value;
+
+#ifdef STACK_USE_PROTECTION_HASH
+    stack_update_hash(stk);
+#endif
 
     return STACK_ERROR_NO_ERROR;
 }
@@ -345,6 +508,10 @@ StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
 
 #ifdef STACK_USE_POISON
     fill_with_poison(stk, stk->size);
+#endif
+
+#ifdef STACK_USE_PROTECTION_HASH
+    stack_update_hash(stk);
 #endif
 
     return STACK_ERROR_NO_ERROR;
@@ -445,6 +612,8 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
         free(stk->p_origin);
     }
     stk->data = new_data;
+
+    stack_update_hash(stk);
 
     STACK_CHECK(stk)
 
@@ -555,13 +724,11 @@ inline void print_curr_local_time(FILE *stream)
 
 void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, const char *func)
 {
-    //TODO печать в log файл, а не в stderr
     fprintf(stderr, "STACK DUMP at ");
     print_curr_local_time(stderr);
     fprintf(stderr, "\n");
 
     print_verify_res(stderr, verify_res);
-
 
     fprintf(stderr, "Stack[%p] \"%s\" declared in %s(%d), in function %s. "
                     "STACK_DUMP() called from %s(%d), from function %s.\n",   stk,
@@ -583,7 +750,9 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, c
 #endif
     fprintf(stderr, "\tsize = <" STACKSIZE_T_SPECF ">\n"
                     "\tcapacity = <" STACKSIZE_T_SPECF ">\n"
-                    "\tdata[%p]\n", stk->size, stk->capacity, stk->data);
+                    "\thash_struct = <" STACKHASH_T_SPECF ">\n"
+                    "\thash_data = <" STACKHASH_T_SPECF ">\n"
+                    "\tdata[%p]\n", stk->size, stk->capacity, stk->hash_struct, stk->hash_data, stk->data);
 #ifdef STACK_USE_PROTECTION_CANARY
     fprintf(stderr, "\tright_canary = <" CANARY_T_SPECF ">\n", stk->canary_right);
 #endif
