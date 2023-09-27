@@ -7,6 +7,7 @@ struct fortest
     char c;
 };
 
+
 //typedef int Elem_t;
 //void inline print_elem_t(FILE *stream, Elem_t val) { fprintf(stream, "%d", val); }
 
@@ -18,7 +19,7 @@ void inline print_elem_t(FILE *stream, Elem_t val) { fprintf(stream, "{i = %d, d
 #define STACK_ABORT_ON_DUMP
 #define STACK_DUMP_ON_INVALID_POP
 #define STACK_USE_PROTECTION_CANARY
-#define STACK_USE_PROTECTION_HASH
+//#define STACK_USE_PROTECTION_HASH
 
 #include "stack.h"
 
@@ -32,6 +33,7 @@ int main()
     //printf("dump2\n");
     //STACK_DUMP(&stk, 0);
 
+    //stack_push(&stk, 19);
     stack_push(&stk, {19, 19.19, 'f'});
     //printf("dump3\n");
     //STACK_DUMP(&stk, 0);
@@ -55,7 +57,7 @@ int main()
     //right canary damaging example
     //*(((char *) (&stk + 1)) - 1) = 'f';
 
-    stack_push(&stk, {-1, 23.42, 's'});
+    //stack_push(&stk, {-1, 23.42, 's'});
 
     stack_dtor(&stk);
 

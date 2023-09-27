@@ -519,6 +519,7 @@ StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
 
 //-------------------------------------------------------------------------------------------------------
 
+#ifdef STACK_USE_POISON
 inline void fill_up_with_poison(Stack *stk, stacksize_t start_with_index)
 {
     for (stacksize_t ind = start_with_index; ind < stk->capacity; ind++)
@@ -526,8 +527,10 @@ inline void fill_up_with_poison(Stack *stk, stacksize_t start_with_index)
         fill_with_poison(stk, ind);
     }
 }
+#endif
 
-inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p )
+//??????????????????????????????????????????????????????????????????????????????????????????????????????????
+inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p, void **p_new_origin )
 {
     assert(stk);
     assert(new_data_p);
@@ -541,7 +544,6 @@ inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p )
 
     void *p_calloc = (void *) calloc( calloc_first_arg, calloc_second_arg );
     if (!p_calloc) return STACK_ERROR_MEM_BAD_REALLOC;
-    stk->p_origin = p_calloc;
 
     Elem_t *new_data = (Elem_t *) p_calloc;
 #ifdef STACK_USE_PROTECTION_CANARY
@@ -557,6 +559,9 @@ inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p )
     size_t empty_space_between_data_and_right_canary = sizeof(canary_t) - ((__PTRDIFF_TYPE__)( p_data_end ) % sizeof(canary_t));
     if (empty_space_between_data_and_right_canary == sizeof(canary_t)) empty_space_between_data_and_right_canary = 0;
     stk->p_data_canary_right = (canary_t *)(((char *) p_data_end) + empty_space_between_data_and_right_canary);
+
+    *(stk->p_data_canary_left) = CANARY_LEFT_DEFAULT_VALUE;
+    *(stk->p_data_canary_right) = CANARY_RIGHT_DEFAULT_VALUE;
 /*
     printf( "~~~\n"
             "p_left_canary_end = %p\n"
@@ -578,12 +583,10 @@ inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p )
     assert( ((__PTRDIFF_TYPE__)new_data)%sizeof(Elem_t) == 0);
     assert( ((__PTRDIFF_TYPE__) stk->p_data_canary_left )%sizeof(canary_t) == 0 );
     assert( ((__PTRDIFF_TYPE__) stk->p_data_canary_right )%sizeof(canary_t) == 0 );
-
-    *(stk->p_data_canary_left) = CANARY_LEFT_DEFAULT_VALUE;
-    *(stk->p_data_canary_right) = CANARY_RIGHT_DEFAULT_VALUE;
 #endif
 
     *new_data_p = new_data;
+    *p_new_origin = p_calloc;
 
     return STACK_ERROR_NO_ERROR;
 }
@@ -600,10 +603,12 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
     stk->capacity = MEM_MULTIPLIER * stk->capacity;
 
     Elem_t *new_data = NULL;
-    if ( stack_realloc_helper_(stk, &new_data) ) return STACK_ERROR_MEM_BAD_REALLOC;
+    void *p_new_origin = NULL;
+    if ( stack_realloc_helper_(stk, &new_data, &p_new_origin) ) return STACK_ERROR_MEM_BAD_REALLOC;
     assert(new_data);
+    assert(p_new_origin);
 
-    if (stk->data)
+    if (stk->data && stk->size > 0)
     {
         memcpy(new_data, stk->data, (size_t) stk->size);
     }
@@ -612,13 +617,20 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
         free(stk->p_origin);
     }
     stk->data = new_data;
+    stk->p_origin = p_new_origin;
 
+#ifdef STACK_USE_PROTECTION_HASH
     stack_update_hash(stk);
+#endif
 
     STACK_CHECK(stk)
 
 #ifdef STACK_USE_POISON
     fill_up_with_poison(stk, stk->size);
+#endif
+
+#ifdef STACK_USE_PROTECTION_HASH
+    stack_update_hash(stk);
 #endif
 
     return STACK_ERROR_NO_ERROR;
@@ -631,14 +643,20 @@ inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
     stk->capacity = (stk->capacity) / MEM_MULTIPLIER;
 
     Elem_t *new_data = NULL;
-    if ( stack_realloc_helper_(stk, &new_data) ) return STACK_ERROR_MEM_BAD_REALLOC;
+    void *p_new_origin = NULL;
+    if ( stack_realloc_helper_(stk, &new_data, &p_new_origin) ) return STACK_ERROR_MEM_BAD_REALLOC;
     assert(new_data);
+    assert(p_new_origin);
 
     if (stk->size > 0) memcpy(new_data, stk->data, (size_t) stk->size);
 
     free(stk->p_origin);
 
     stk->data = new_data;
+
+#ifdef STACK_USE_PROTECTION_HASH
+    stack_update_hash(stk);
+#endif
 
     return STACK_ERROR_NO_ERROR;
 }
@@ -747,14 +765,14 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, c
     fprintf(stderr, "{\n");
 #ifdef STACK_USE_PROTECTION_CANARY
     fprintf(stderr, "\tleft_canary = <" CANARY_T_SPECF ">\n", stk->canary_left);
+    fprintf(stderr, "\tright_canary = <" CANARY_T_SPECF ">\n", stk->canary_right);
 #endif
     fprintf(stderr, "\tsize = <" STACKSIZE_T_SPECF ">\n"
                     "\tcapacity = <" STACKSIZE_T_SPECF ">\n"
-                    "\thash_struct = <" STACKHASH_T_SPECF ">\n"
-                    "\thash_data = <" STACKHASH_T_SPECF ">\n"
-                    "\tdata[%p]\n", stk->size, stk->capacity, stk->hash_struct, stk->hash_data, stk->data);
-#ifdef STACK_USE_PROTECTION_CANARY
-    fprintf(stderr, "\tright_canary = <" CANARY_T_SPECF ">\n", stk->canary_right);
+                    "\tdata[%p]\n", stk->size, stk->capacity, stk->data);
+#ifdef STACK_USE_PROTECTION_HASH
+    fprintf(stderr, "\thash_struct = <" STACKHASH_T_SPECF ">\n"
+                    "\thash_data = <" STACKHASH_T_SPECF ">\n", stk->hash_struct, stk->hash_data);
 #endif
     if ( !(stk->data) )
     {
