@@ -462,12 +462,6 @@ StackErrorCode stack_push(Stack *stk, Elem_t value)
         return mem_realloc_res;
     }
 
-#ifdef STACK_USE_PROTECTION_HASH
-    stack_update_hash(stk);
-#endif
-
-    STACK_CHECK(stk)
-
     (stk->data)[(stk->size)++] = value;
 
 #ifdef STACK_USE_PROTECTION_HASH
@@ -619,18 +613,8 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
     stk->data = new_data;
     stk->p_origin = p_new_origin;
 
-#ifdef STACK_USE_PROTECTION_HASH
-    stack_update_hash(stk);
-#endif
-
-    STACK_CHECK(stk)
-
 #ifdef STACK_USE_POISON
     fill_up_with_poison(stk, stk->size);
-#endif
-
-#ifdef STACK_USE_PROTECTION_HASH
-    stack_update_hash(stk);
 #endif
 
     return STACK_ERROR_NO_ERROR;
@@ -653,10 +637,6 @@ inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
     free(stk->p_origin);
 
     stk->data = new_data;
-
-#ifdef STACK_USE_PROTECTION_HASH
-    stack_update_hash(stk);
-#endif
 
     return STACK_ERROR_NO_ERROR;
 }
