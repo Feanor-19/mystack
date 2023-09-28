@@ -10,7 +10,7 @@ struct fortest
 typedef fortest Elem_t;
 void inline print_elem_t(FILE *stream, Elem_t val) { fprintf(stream, "{i = %d, d = %f, c = %c}", val.i, val.d, val.c); }
 
-//#define STACK_DO_DUMP
+#define STACK_DO_DUMP
 #define STACK_USE_POISON
 #define STACK_ABORT_ON_DUMP
 #define STACK_DUMP_ON_INVALID_POP

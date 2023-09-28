@@ -294,7 +294,7 @@ int stack_is_dmgd_canary_data_(const Stack *stk)
 #endif
 
 #ifdef STACK_USE_PROTECTION_HASH
-static stackhash_t stack_compute_hash(char *key, unsigned int len)
+stackhash_t stack_compute_hash(char *key, unsigned int len)
 {
     const unsigned int m = 0x5bd1e995;
     const unsigned int seed = 0;
@@ -357,7 +357,7 @@ inline stackhash_t stack_compute_hash_struct_(Stack *stk)
     return stack_compute_hash( (char *) stk, sizeof(*stk) );
 }
 
-static int stack_is_hash_data_valid(Stack *stk)
+int stack_is_hash_data_valid(Stack *stk)
 {
     assert(stk);
 
@@ -365,7 +365,7 @@ static int stack_is_hash_data_valid(Stack *stk)
     return 0;
 }
 
-static int stack_is_hash_struct_valid(Stack *stk)
+int stack_is_hash_struct_valid(Stack *stk)
 {
     assert(stk);
 
@@ -377,7 +377,7 @@ static int stack_is_hash_struct_valid(Stack *stk)
     return 0;
 }
 
-static void stack_update_hash(Stack *stk)
+void stack_update_hash(Stack *stk)
 {
     assert(stk);
 
@@ -486,7 +486,7 @@ StackErrorCode stack_push(Stack *stk, Elem_t value)
 }
 
 #ifdef STACK_USE_POISON
-inline void fill_with_poison(Stack *stk, stacksize_t ind)
+inline void fill_with_poison_(Stack *stk, stacksize_t ind)
 {
     assert(stk);
     assert(0 <= ind && ind < stk->capacity);
@@ -515,7 +515,7 @@ StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
     *ret_value = stk->data[--(stk->size)];
 
 #ifdef STACK_USE_POISON
-    fill_with_poison(stk, stk->size);
+    fill_with_poison_(stk, stk->size);
 #endif
 
 #ifdef STACK_USE_PROTECTION_HASH
@@ -528,11 +528,11 @@ StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
 //-------------------------------------------------------------------------------------------------------
 
 #ifdef STACK_USE_POISON
-inline void fill_up_with_poison(Stack *stk, stacksize_t start_with_index)
+inline void fill_up_with_poison_(Stack *stk, stacksize_t start_with_index)
 {
     for (stacksize_t ind = start_with_index; ind < stk->capacity; ind++)
     {
-        fill_with_poison(stk, ind);
+        fill_with_poison_(stk, ind);
     }
 }
 #endif
@@ -628,7 +628,7 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
     stk->p_origin = p_new_origin;
 
 #ifdef STACK_USE_POISON
-    fill_up_with_poison(stk, stk->size);
+    fill_up_with_poison_(stk, stk->size);
 #endif
 
     return STACK_ERROR_NO_ERROR;
@@ -720,7 +720,7 @@ inline void stack_dump_data_( Stack *stk )
     fprintf(stderr, "\t}\n");
 }
 
-inline void print_curr_local_time(FILE *stream)
+inline void print_curr_local_time_(FILE *stream)
 {
     time_t curr_time = time(NULL);
     tm curr_local_time = *localtime(&curr_time);
@@ -737,7 +737,7 @@ inline void print_curr_local_time(FILE *stream)
 void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, const char *func)
 {
     fprintf(stderr, "STACK DUMP at ");
-    print_curr_local_time(stderr);
+    print_curr_local_time_(stderr);
     fprintf(stderr, "\n");
 
     print_verify_res(stderr, verify_res);
