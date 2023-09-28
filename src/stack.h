@@ -287,7 +287,7 @@ int stack_is_dmgd_canary_data_(const Stack *stk)
     assert(stk);
 
     if (*(stk->p_data_canary_left) != CANARY_LEFT_DEFAULT_VALUE
-     || *(stk->p_data_canary_right) != CANARY_RIGHT_DEFAULT_VALUE) return 1;
+     || *(stk->p_data_canary_left) != CANARY_LEFT_DEFAULT_VALUE) return 1;
     return 0;
 }
 

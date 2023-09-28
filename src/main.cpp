@@ -32,6 +32,8 @@ int main()
     print_elem_t(stdout, x);
     printf("\n");
 
+    stack_pop(&stk, &x);
+
     stack_push(&stk, {-1, 23.42, 's'});
 
     stack_dtor(&stk);
