@@ -124,12 +124,12 @@ struct Stack
     stackhash_t hash_struct = HASH_DEFAULT_VALUE;
     stackhash_t hash_data = HASH_DEFAULT_VALUE;
 #endif
-
+#ifdef STACK_DO_DUMP
     const char *stack_name = NULL;
     const char *orig_file_name = NULL;
     int orig_line = -1;
     const char *orig_func_name = NULL;
-
+#endif
     void *p_origin = NULL; // настоящий указатель на начало блока памяти, в котором лежит data
 
 #ifdef STACK_USE_PROTECTION_CANARY
@@ -180,11 +180,15 @@ static void stack_update_hash(Stack *stk);
 //! first push() will lead to realloc_up().
 //! @param [in] stk Pointer to stack to construct.
 //! @return StackErrorCode enum value.
-static StackErrorCode stack_ctor_(  Stack *stk,
-                                    const char *stack_name,
-                                    const char *orig_file_name,
-                                    const int orig_line,
-                                    const char *orig_func_name);
+StackErrorCode stack_ctor_( Stack *stk
+#ifdef STACK_DO_DUMP
+                            ,
+                            const char *stack_name,
+                            const char *orig_file_name,
+                            const int orig_line,
+                            const char *orig_func_name
+#endif
+                          );
 
 //! @brief Stack deconstructor.
 //! @param [in] stk Pointer to stack to deconstruct.
@@ -394,25 +398,34 @@ static void stack_update_hash(Stack *stk)
 
 //---------------------------------------------------------------------------------------------------------------
 
+#ifdef STACK_DO_DUMP
 #define stack_ctor(stk) stack_ctor_(stk, #stk, __FILE__, __LINE__, __func__)
+#else
+#define stack_ctor(stk) stack_ctor_(stk)
+#endif
 
-StackErrorCode stack_ctor_( Stack *stk,
+//????????????????????????????????????????????????????????????
+StackErrorCode stack_ctor_( Stack *stk
+#ifdef STACK_DO_DUMP
+                            ,
                             const char *stack_name,
                             const char *orig_file_name,
                             const int orig_line,
-                            const char *orig_func_name)
+                            const char *orig_func_name
+#endif
+                          )
 {
     if (!stk) return STACK_ERROR_NULL_STK_PNT_PASSED;
 
     stk->data = NULL;
     stk->capacity = 0;
     stk->size = 0;
-
+#ifdef STACK_DO_DUMP
     stk->stack_name = stack_name;
     stk->orig_file_name = orig_file_name;
     stk->orig_line = orig_line;
     stk->orig_func_name = orig_func_name;
-
+#endif
 #ifdef STACK_USE_PROTECTION_CANARY
     stk->canary_left = CANARY_LEFT_DEFAULT_VALUE;
     stk->canary_right = CANARY_RIGHT_DEFAULT_VALUE;
@@ -432,11 +445,12 @@ StackErrorCode stack_dtor(Stack *stk)
     stk->size = -1;
     if (stk->data) free(stk->data);
     stk->data = NULL;
-
+#ifdef STACK_DO_DUMP
     stk->stack_name = NULL;
     stk->orig_file_name = NULL;
     stk->orig_line = -1;
     stk->orig_func_name = NULL;
+#endif
 #ifdef STACK_USE_PROTECTION_CANARY
     stk->canary_left = 0;
     stk->canary_right = 0;
