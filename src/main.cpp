@@ -53,6 +53,7 @@ int main()
     printf("----push4\n");
     STACK_DUMP(&stk, 0);
 
+
     stack_push(&stk, {-1, 23.42, 's'});
     printf("----push5\n");
     STACK_DUMP(&stk, 0);
