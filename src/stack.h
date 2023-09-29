@@ -15,6 +15,7 @@
     4) STACK_DUMP_ON_INVALID_POP
     5) STACK_USE_PROTECTION_CANARY
     6) STACK_USE_PROTECTION_HASH
+    7) STACK_FULL_DEBUG_INFO
 */
 
 //--------------------------------------------------------------------------------------------
@@ -583,7 +584,7 @@ inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p, vo
 
     *(stk->p_data_canary_left) = CANARY_LEFT_DEFAULT_VALUE;
     *(stk->p_data_canary_right) = CANARY_RIGHT_DEFAULT_VALUE;
-
+#ifdef STACK_FULL_DEBUG_INFO
     printf( "Realloc hepler info:\n"
             "p_left_canary_end = %p\n"
             "empty_space_between_left_canary_and_data = %llu\n"
@@ -600,11 +601,11 @@ inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p, vo
                                                         (void *) stk->p_data_canary_right,
                                                         *(stk->p_data_canary_left),
                                                         *(stk->p_data_canary_right) );
-
+#endif
     assert( ((__PTRDIFF_TYPE__)new_data)%sizeof(Elem_t) == 0);
     assert( ((__PTRDIFF_TYPE__) stk->p_data_canary_left )%sizeof(canary_t) == 0 );
     assert( ((__PTRDIFF_TYPE__) stk->p_data_canary_right )%sizeof(canary_t) == 0 );
-    assert( ((char *)stk->p_data_canary_right + sizeof(canary_t) - (char *)p_calloc)
+    assert( (size_t) ((char *)stk->p_data_canary_right + sizeof(canary_t) - (char *)p_calloc)
         <= calloc_first_arg*calloc_second_arg );
 #endif
 
@@ -633,6 +634,7 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
 
     if (stk->data && stk->size > 0)
     {
+#ifdef STACK_FULL_DEBUG_INFO
         printf("@@@ before memcpy in realloc up\n");
         for (stacksize_t ind = 0; ind < stk->capacity; ind++)
         {
@@ -640,7 +642,7 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
             printf("\n");
         }
         printf("@@@\n");
-
+#endif
         memcpy(new_data, stk->data, (stk->size)*sizeof(Elem_t));
     }
     if (stk->p_origin)
@@ -653,7 +655,7 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
 #ifdef STACK_USE_POISON
     fill_up_with_poison_(stk, stk->size);
 #endif
-
+#ifdef STACK_FULL_DEBUG_INFO
     printf("@@@ end of realloc up\n");
     for (stacksize_t ind = 0; ind < stk->capacity; ind++)
     {
@@ -661,7 +663,7 @@ inline StackErrorCode stack_realloc_up_( Stack *stk, const int MEM_MULTIPLIER )
         printf("\n");
     }
     printf("@@@\n");
-
+#endif
 
     return STACK_ERROR_NO_ERROR;
 }
@@ -677,7 +679,7 @@ inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
     if ( stack_realloc_helper_(stk, &new_data, &p_new_origin) ) return STACK_ERROR_MEM_BAD_REALLOC;
     assert(new_data);
     assert(p_new_origin);
-
+#ifdef STACK_FULL_DEBUG_INFO
     printf("@@@ before memcpy in realloc down\n");
     for (stacksize_t ind = 0; ind < stk->capacity; ind++)
     {
@@ -685,13 +687,13 @@ inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
         printf("\n");
     }
     printf("@@@\n");
-
+#endif
     if (stk->size > 0) memcpy(new_data, stk->data, ((size_t) stk->size)*sizeof(Elem_t));
 
     free(stk->p_origin);
 
     stk->data = new_data;
-
+#ifdef STACK_FULL_DEBUG_INFO
     printf("@@@ end of realloc down\n");
     for (stacksize_t ind = 0; ind < stk->capacity; ind++)
     {
@@ -699,7 +701,7 @@ inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
         printf("\n");
     }
     printf("@@@\n");
-
+#endif
     return STACK_ERROR_NO_ERROR;
 }
 
