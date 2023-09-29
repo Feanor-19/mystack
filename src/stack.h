@@ -524,12 +524,15 @@ StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
     fill_with_poison_(stk, stk->size);
 #endif
 
+#ifdef STACK_USE_PROTECTION_HASH
+    stack_update_hash(stk);
+#endif
+
     StackErrorCode mem_realloc_res = stack_realloc(stk); // сам stack_realloc определяет, нужно ли делать realloc
     if ( mem_realloc_res )
     {
         return mem_realloc_res;
     }
-
 
 #ifdef STACK_USE_PROTECTION_HASH
     stack_update_hash(stk);
