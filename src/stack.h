@@ -30,7 +30,7 @@ typedef long int stacksize_t;
 
 #ifdef STACK_USE_PROTECTION_CANARY
 typedef unsigned long long canary_t;
-#define CANARY_T_SPECF "%I64X"
+#define CANARY_T_SPECF "%llX"
 const canary_t CANARY_LEFT_DEFAULT_VALUE  = 0xDEDEDED;
 const canary_t CANARY_RIGHT_DEFAULT_VALUE = 0xDEDEDED;
 #endif
@@ -38,7 +38,7 @@ const canary_t CANARY_RIGHT_DEFAULT_VALUE = 0xDEDEDED;
 #ifdef STACK_USE_PROTECTION_HASH
 typedef long long stackhash_t;
 const stackhash_t HASH_DEFAULT_VALUE = 0;
-#define STACKHASH_T_SPECF "%I64X"
+#define STACKHASH_T_SPECF "%llX"
 #endif
 
 /*
@@ -287,7 +287,7 @@ int stack_is_dmgd_canary_data_(const Stack *stk)
     assert(stk);
 
     if (*(stk->p_data_canary_left) != CANARY_LEFT_DEFAULT_VALUE
-     || *(stk->p_data_canary_left) != CANARY_LEFT_DEFAULT_VALUE) return 1;
+     || *(stk->p_data_canary_right) != CANARY_RIGHT_DEFAULT_VALUE) return 1;
     return 0;
 }
 
@@ -327,11 +327,14 @@ stackhash_t stack_compute_hash(char *key, unsigned int len)
     {
         case 3:
         hash ^= data[2] << 16;
+        // fall through
         case 2:
         hash ^= data[1] << 8;
+        // fall through
         case 1:
         hash ^= data[0];
         hash *= m;
+        // fall through
         default:
         break;
     };
@@ -347,7 +350,7 @@ inline stackhash_t stack_compute_hash_data_(Stack *stk)
 {
     assert(stk);
 
-    return stack_compute_hash( (char *) stk->data, (stk->capacity)*sizeof(Elem_t));
+    return stack_compute_hash( (char *) stk->data, (unsigned int) (stk->capacity)*sizeof(Elem_t));
 }
 
 inline stackhash_t stack_compute_hash_struct_(Stack *stk)
@@ -418,6 +421,7 @@ StackErrorCode stack_ctor_( Stack *stk
     if (!stk) return STACK_ERROR_NULL_STK_PNT_PASSED;
 
     stk->data = NULL;
+    stk->p_origin = NULL;
     stk->capacity = 0;
     stk->size = 0;
 #ifdef STACK_DO_DUMP
@@ -443,7 +447,8 @@ StackErrorCode stack_dtor(Stack *stk)
 
     stk->capacity = -1;
     stk->size = -1;
-    if (stk->data) free(stk->data);
+    if (stk->p_origin) free(stk->p_origin);
+    stk->p_origin = NULL;
     stk->data = NULL;
 #ifdef STACK_DO_DUMP
     stk->stack_name = NULL;
@@ -518,6 +523,13 @@ StackErrorCode stack_pop(Stack *stk, Elem_t *ret_value)
     fill_with_poison_(stk, stk->size);
 #endif
 
+    StackErrorCode mem_realloc_res = stack_realloc(stk); // сам stack_realloc определяет, нужно ли делать realloc
+    if ( mem_realloc_res )
+    {
+        return mem_realloc_res;
+    }
+
+
 #ifdef STACK_USE_PROTECTION_HASH
     stack_update_hash(stk);
 #endif
@@ -570,27 +582,29 @@ inline StackErrorCode stack_realloc_helper_( Stack *stk, Elem_t **new_data_p, vo
 
     *(stk->p_data_canary_left) = CANARY_LEFT_DEFAULT_VALUE;
     *(stk->p_data_canary_right) = CANARY_RIGHT_DEFAULT_VALUE;
-/*
+
     printf( "~~~\n"
             "p_left_canary_end = %p\n"
-            "empty_space_between_left_canary_and_data = %d\n"
+            "empty_space_between_left_canary_and_data = %llu\n"
             "new_data = %p\n"
             "p_data_end = %p\n"
-            "empty_space_between_data_and_right_canary = %d\n"
+            "empty_space_between_data_and_right_canary = %llu\n"
             "p_data_canary_right = %p\n"
             "canary data left = " CANARY_T_SPECF "\n"
-            "canary data right = " CANARY_T_SPECF "\n", p_left_canary_end,
+            "canary data right = " CANARY_T_SPECF "\n", (void *) p_left_canary_end,
                                                         empty_space_between_left_canary_and_data,
-                                                        new_data,
-                                                        p_data_end,
+                                                        (void *) new_data,
+                                                        (void *) p_data_end,
                                                         empty_space_between_data_and_right_canary,
-                                                        stk->p_data_canary_right,
+                                                        (void *) stk->p_data_canary_right,
                                                         *(stk->p_data_canary_left),
                                                         *(stk->p_data_canary_right) );
-*/
+
     assert( ((__PTRDIFF_TYPE__)new_data)%sizeof(Elem_t) == 0);
     assert( ((__PTRDIFF_TYPE__) stk->p_data_canary_left )%sizeof(canary_t) == 0 );
     assert( ((__PTRDIFF_TYPE__) stk->p_data_canary_right )%sizeof(canary_t) == 0 );
+    assert( ((char *)stk->p_data_canary_right + sizeof(canary_t) - (char *)p_calloc)
+        <= calloc_first_arg*calloc_second_arg );
 #endif
 
     *new_data_p = new_data;
@@ -666,7 +680,7 @@ StackErrorCode stack_realloc(Stack *stk)
         StackErrorCode realloc_up_res = stack_realloc_up_(stk, MEM_MULTIPLIER);
         if (!realloc_up_res) return realloc_up_res;
     }
-    else if ( stk->size <= stk->capacity / ( MEM_MULTIPLIER * MEM_MULTIPLIER ) )
+    else if ( stk->size > 0 && stk->size * ( MEM_MULTIPLIER * MEM_MULTIPLIER ) <= stk->capacity )
     {
         StackErrorCode realloc_down_res = stack_realloc_down_(stk, MEM_MULTIPLIER);
         if (!realloc_down_res) return realloc_down_res;
@@ -686,14 +700,14 @@ inline void stack_dump_data_( Stack *stk )
 #ifdef STACK_USE_PROTECTION_CANARY
     if ( stk->p_data_canary_left )
     {
-        fprintf(stderr, "\tLeft data canary[%p] = <" CANARY_T_SPECF ">\n",  stk->p_data_canary_left,
+        fprintf(stderr, "\tLeft data canary[%p] = <" CANARY_T_SPECF ">\n", (void *) stk->p_data_canary_left,
                                                                             *(stk->p_data_canary_left));
     }
 #endif
 
     for (stacksize_t ind = 0; ind < stk->capacity; ind++)
     {
-        fprintf(stderr, "\t\t[" STACKSIZE_T_SPECF "][%p]\t = <", ind, stk->data + ind);
+        fprintf(stderr, "\t\t[" STACKSIZE_T_SPECF "][%p]\t = <", ind, (void *)(stk->data + ind));
         print_elem_t(stderr, stk->data[ind]);
         fprintf(stderr, ">");
 
@@ -712,7 +726,7 @@ inline void stack_dump_data_( Stack *stk )
 #ifdef STACK_USE_PROTECTION_CANARY
     if ( stk->p_data_canary_right )
     {
-        fprintf(stderr, "\tRight data canary[%p] = <" CANARY_T_SPECF ">\n", stk->p_data_canary_right,
+        fprintf(stderr, "\tRight data canary[%p] = <" CANARY_T_SPECF ">\n", (void *) stk->p_data_canary_right,
                                                                             *(stk->p_data_canary_right));
     }
 #endif
@@ -743,12 +757,12 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, c
     print_verify_res(stderr, verify_res);
 
     fprintf(stderr, "Stack[%p] \"%s\" declared in %s(%d), in function %s. "
-                    "STACK_DUMP() called from %s(%d), from function %s.\n",   stk,
-                                                                    stk->stack_name,
-                                                                    stk->orig_file_name,
-                                                                    stk->orig_line,
-                                                                    stk->orig_func_name,
-                                                                    file, line, func);
+                    "STACK_DUMP() called from %s(%d), from function %s.\n", (void *)    stk,
+                                                                                        stk->stack_name,
+                                                                                        stk->orig_file_name,
+                                                                                        stk->orig_line,
+                                                                                        stk->orig_func_name,
+                                                                                        file, line, func);
 
     if (!stk)
     {
@@ -763,7 +777,7 @@ void stack_dump_(Stack *stk, int verify_res, const char *file, const int line, c
 #endif
     fprintf(stderr, "\tsize = <" STACKSIZE_T_SPECF ">\n"
                     "\tcapacity = <" STACKSIZE_T_SPECF ">\n"
-                    "\tdata[%p]\n", stk->size, stk->capacity, stk->data);
+                    "\tdata[%p]\n", stk->size, stk->capacity, (void *) stk->data);
 #ifdef STACK_USE_PROTECTION_HASH
     fprintf(stderr, "\thash_struct = <" STACKHASH_T_SPECF ">\n"
                     "\thash_data = <" STACKHASH_T_SPECF ">\n", stk->hash_struct, stk->hash_data);
