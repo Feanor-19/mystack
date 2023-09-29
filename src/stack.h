@@ -125,6 +125,7 @@ struct Stack
     stackhash_t hash_struct = HASH_DEFAULT_VALUE;
     stackhash_t hash_data = HASH_DEFAULT_VALUE;
 #endif
+
 #ifdef STACK_DO_DUMP
     const char *stack_name = NULL;
     const char *orig_file_name = NULL;
@@ -231,11 +232,13 @@ static void stack_dump_(Stack *stk, int verify_res, const char *file, int line, 
 //--------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------
 
-#define STACK_CHECK(stk)    {int verify_res = stack_verify(stk);     \
-                            if ( verify_res != 0 ) {                \
-                                STACK_DUMP(stk, verify_res);        \
-                                return STACK_ERROR_VERIFY;          \
-                            }}
+#define STACK_CHECK(stk)    {               \
+    int verify_res = stack_verify(stk);     \
+    if ( verify_res != 0 ) {                \
+        STACK_DUMP(stk, verify_res);        \
+        return STACK_ERROR_VERIFY;          \
+    }                                       \
+}
 
 int stack_verify(Stack *stk)
 {
@@ -279,7 +282,9 @@ int stack_is_dmgd_canary_struct_(const Stack *stk)
     assert(stk);
 
     if (stk->canary_left != CANARY_LEFT_DEFAULT_VALUE
-     || stk->canary_right != CANARY_RIGHT_DEFAULT_VALUE) return 1;
+     || stk->canary_right != CANARY_RIGHT_DEFAULT_VALUE)
+     return 1;
+
     return 0;
 }
 
@@ -288,7 +293,9 @@ int stack_is_dmgd_canary_data_(const Stack *stk)
     assert(stk);
 
     if (*(stk->p_data_canary_left) != CANARY_LEFT_DEFAULT_VALUE
-     || *(stk->p_data_canary_right) != CANARY_RIGHT_DEFAULT_VALUE) return 1;
+     || *(stk->p_data_canary_right) != CANARY_RIGHT_DEFAULT_VALUE)
+     return 1;
+
     return 0;
 }
 
@@ -451,12 +458,14 @@ StackErrorCode stack_dtor(Stack *stk)
     if (stk->p_origin) free(stk->p_origin);
     stk->p_origin = NULL;
     stk->data = NULL;
+
 #ifdef STACK_DO_DUMP
     stk->stack_name = NULL;
     stk->orig_file_name = NULL;
     stk->orig_line = -1;
     stk->orig_func_name = NULL;
 #endif
+
 #ifdef STACK_USE_PROTECTION_CANARY
     stk->canary_left = 0;
     stk->canary_right = 0;
@@ -469,6 +478,7 @@ StackErrorCode stack_dtor(Stack *stk)
     stk->hash_struct = HASH_DEFAULT_VALUE;
     stk->hash_data = HASH_DEFAULT_VALUE;
 #endif
+
     return STACK_ERROR_NO_ERROR;
 }
 
@@ -679,9 +689,12 @@ inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
 
     Elem_t *new_data = NULL;
     void *p_new_origin = NULL;
-    if ( stack_realloc_helper_(stk, &new_data, &p_new_origin) ) return STACK_ERROR_MEM_BAD_REALLOC;
+    if ( stack_realloc_helper_(stk, &new_data, &p_new_origin) )
+        return STACK_ERROR_MEM_BAD_REALLOC;
+
     assert(new_data);
     assert(p_new_origin);
+
 #ifdef STACK_FULL_DEBUG_INFO
     printf("@@@ before memcpy in realloc down\n");
     for (stacksize_t ind = 0; ind < stk->capacity; ind++)
@@ -691,11 +704,13 @@ inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
     }
     printf("@@@\n");
 #endif
+
     if (stk->size > 0) memcpy(new_data, stk->data, ((size_t) stk->size)*sizeof(Elem_t));
 
     free(stk->p_origin);
 
     stk->data = new_data;
+
 #ifdef STACK_FULL_DEBUG_INFO
     printf("@@@ end of realloc down\n");
     for (stacksize_t ind = 0; ind < stk->capacity; ind++)
@@ -705,6 +720,7 @@ inline StackErrorCode stack_realloc_down_(Stack *stk, const int MEM_MULTIPLIER)
     }
     printf("@@@\n");
 #endif
+
     return STACK_ERROR_NO_ERROR;
 }
 
@@ -765,8 +781,9 @@ inline void stack_dump_data_( Stack *stk )
 #ifdef STACK_USE_PROTECTION_CANARY
     if ( stk->p_data_canary_right )
     {
-        fprintf(stderr, "\tRight data canary[%p] = <" CANARY_T_SPECF ">\n", (void *) stk->p_data_canary_right,
-                                                                            *(stk->p_data_canary_right));
+        fprintf(stderr, "\tRight data canary[%p] = <" CANARY_T_SPECF ">\n",
+                (void *) stk->p_data_canary_right,
+                *(stk->p_data_canary_right));
     }
 #endif
 
