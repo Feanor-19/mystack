@@ -427,6 +427,8 @@ StackErrorCode stack_ctor_( Stack *stk
 {
     if (!stk) return STACK_ERROR_NULL_STK_PNT_PASSED;
 
+    stack_dtor(stk);
+
     stk->data = NULL;
     stk->p_origin = NULL;
     stk->capacity = 0;
