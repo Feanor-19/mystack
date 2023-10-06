@@ -8,6 +8,17 @@
 #include <time.h>
 
 /*
+    REMEMBER TO DO FOLLOWING LINES BEFORE #include "stack.h" IN YOUR FILE:
+    typedef *your_type* Elem_t
+    void inline print_elem_t(FILE *stream, Elem_t val) { *your code here* }
+
+    FOR EXAMPLE:
+    typedef int Elem_t
+    void inline print_elem_t(FILE *stream, Elem_t val) { fprintf(stream, "%d", val); }
+
+*/
+
+/*
     USED DEFINES:
     1) STACK_DO_DUMP
     2) STACK_USE_POISON
