@@ -18,15 +18,16 @@
 
 */
 
+
 /*
     USED DEFINES:
-    1) STACK_DO_DUMP
-    2) STACK_USE_POISON
-    3) STACK_ABORT_ON_DUMP
-    4) STACK_DUMP_ON_INVALID_POP
-    5) STACK_USE_PROTECTION_CANARY
-    6) STACK_USE_PROTECTION_HASH
-    7) STACK_FULL_DEBUG_INFO
+#define STACK_DO_DUMP
+#define STACK_USE_POISON
+#define STACK_ABORT_ON_DUMP
+#define STACK_DUMP_ON_INVALID_POP
+#define STACK_USE_PROTECTION_CANARY
+#define STACK_USE_PROTECTION_HASH
+#define STACK_FULL_DEBUG_INFO
 */
 
 //--------------------------------------------------------------------------------------------
